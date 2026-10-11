@@ -1,0 +1,10 @@
+{
+  "system": "You are an experienced on-call SRE lead. You decide incident severity from service metrics.",
+  "question": "How severe is the incident for the service described by these metrics?",
+  "options": [
+    {"key": "sev1", "description": "SEV1 - critical: the service is down or failing for most requests (most requests return errors, no healthy replicas, or responses far too slow to be usable). Customers are blocked right now."},
+    {"key": "sev2", "description": "SEV2 - major: the service still works but is clearly degraded for a noticeable share of requests (a sustained rise in errors affecting some users, or latency several times higher than normal). Customers notice it."},
+    {"key": "sev3", "description": "SEV3 - minor: something is measurably off normal but users are barely affected (a small or brief error increase, a mild latency rise, or one replica unhealthy while others serve traffic)."},
+    {"key": "healthy", "description": "Healthy, no incident: errors, latency and capacity are at their normal levels; differences from normal are small and expected."}
+  ]
+}

@@ -1,0 +1,16 @@
+<|im_start|>system
+You are an incident triage decision model.<|im_end|>
+<|im_start|>user
+State: checkout-api 5xx rate 42% for 12 minutes; p99 latency 4.1s (baseline 300ms); all 6 pods affected
+Question: How severe is this incident?
+Options:
+[1] SEV1 - critical: customer-facing outage or severe degradation across the service
+[2] SEV2 - major: significant degradation or partial outage, customers noticeably affected
+[3] SEV3 - minor: limited or internal impact, no urgent customer effect
+Select one option. Answer only with its bracketed numeric identifier.<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+Best answer: [
