@@ -1,6 +1,6 @@
 # triage-logprobe
 
-Jev-style prototype of a triage decision service that reads metrics provided in [echo.txt](echo.txt) and use a self-hosted small qwen model to classify the severity.
+Jev-style prototype of a triage decision service that reads metrics listed in [echo.txt](echo.txt) from prometheus and use a self-hosted small qwen model to classify the severity.
 
 Incident triage from Prometheus metrics. It classifies a service as **SEV1 / SEV2 / SEV3 / HEALTHY** with a probability for each, using a small local Qwen model as a Jev-style decision model.
 
