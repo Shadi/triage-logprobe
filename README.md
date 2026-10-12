@@ -40,11 +40,16 @@ HEALTHY  sev1 0.04 | sev2 0.02 | sev3 0.04 | healthy 0.90   confidence 0.69  mar
 
 ### Metrics file
 
-One metric per line, `name=PROMQL`. Lines starting with `#` are comments. Names ending in `_ratio` are shown as percentages. See `echo.txt`.
+One metric per line, `name=PROMQL` or `name[target]=PROMQL`. Lines starting with `#` are comments. Names ending in `_ratio` are shown as percentages. See `echo.txt`.
+
+Each metric is compared to a reference that the model sees next to the current value:
+
+- **Target** (`[max=N]`, `[min=N]` or `[min=N,max=N]`): a fixed bound. The state says whether the value is within or outside it, e.g. `30% (target at most 1%, above target, 30× the limit)`. Use targets for anything with a natural bound or a normal of about zero: error ratios, p99 latency SLOs, availability ratios, restarts, saturation.
+- **No target**: the median at the same time of day over the previous 7 days (±30 min each day). If fewer than 7 days have data, the state says so (`from 2 of 7 days`).
 
 ```
 request_rate_rps=sum(rate(istio_requests_total{destination_service_name="checkout"}[2m]))
-error_5xx_ratio=(sum(rate(istio_requests_total{destination_service_name="checkout",response_code=~"5.."}[2m])) or vector(0)) / sum(rate(istio_requests_total{destination_service_name="checkout"}[2m]))
+error_5xx_ratio[max=0.01]=(sum(rate(istio_requests_total{destination_service_name="checkout",response_code=~"5.."}[2m])) or vector(0)) / sum(rate(istio_requests_total{destination_service_name="checkout"}[2m]))
 ```
 
 ### Flags
@@ -53,8 +58,6 @@ error_5xx_ratio=(sum(rate(istio_requests_total{destination_service_name="checkou
 | --------------------------------------- | --------------------------------------- | ------------------------------------------------------ |
 | `-prom`                                 | (required)                              | Prometheus base URL                                    |
 | `-metrics-file` / `-metric name=PROMQL` |                                         | Metrics to evaluate. `-metric` can be repeated         |
-| `-window`                               | `5m`                                    | How far back the incident may reach                    |
-| `-baseline`                             | `30m`                                   | The "normal" period before the window (median)         |
 | `-at`                                   | now                                     | Evaluate a past moment (RFC3339)                       |
 | `-model` / `-ollama`                    | `qwen3.5:4b` / `http://localhost:11434` | Model and Ollama address                               |
 | `-rubric`                               | built-in                                | JSON file with the system prompt, question and options |
@@ -74,21 +77,21 @@ go run ./cmd/triage-logprobe serve \
 
 Each `-service name=FILE` points to a metrics file in the format above. Services are checked one after another.
 
-| Flag        | Default    |                                                        |
-| ----------- | ---------- | ------------------------------------------------------ |
-| `-service`  | (required) | `name=metrics-file`, repeatable                        |
-| `-interval` | `60s`      | How often every service is checked (min `10s`)         |
-| `-listen`   | `:8080`    | HTTP address                                           |
-| `-timeout`  | `-interval`| Timeout per check (at most `-interval`)                |
+| Flag        | Default     |                                                |
+| ----------- | ----------- | ---------------------------------------------- |
+| `-service`  | (required)  | `name=metrics-file`, repeatable                |
+| `-interval` | `60s`       | How often every service is checked (min `10s`) |
+| `-listen`   | `:8080`     | HTTP address                                   |
+| `-timeout`  | `-interval` | Timeout per check (at most `-interval`)        |
 
-`-prom`, `-window`, `-baseline`, `-model`, `-ollama`, `-rubric` and `-debias` work as in the CLI.
+`-prom`, `-model`, `-ollama`, `-rubric` and `-debias` work as in the CLI.
 
-| Endpoint                   |                                                                  |
-| -------------------------- | ---------------------------------------------------------------- |
-| `GET /v1/services`         | Last state of every service                                      |
-| `GET /v1/services/{name}`  | Last state of one service. Add `?verbose=1` for the raw readings |
-| `GET /healthz`             | Process is up                                                    |
-| `GET /readyz`              | 200 once every service has succeeded at least once               |
+| Endpoint                  |                                                                  |
+| ------------------------- | ---------------------------------------------------------------- |
+| `GET /v1/services`        | Last state of every service                                      |
+| `GET /v1/services/{name}` | Last state of one service. Add `?verbose=1` for the raw readings |
+| `GET /healthz`            | Process is up                                                    |
+| `GET /readyz`             | 200 once every service has succeeded at least once               |
 
 ```sh
 curl localhost:8080/v1/services/echo
@@ -100,7 +103,17 @@ curl localhost:8080/v1/services/echo
   "status": "ok",
   "last": {
     "severity": "HEALTHY",
-    "answer": {"choice": "healthy", "probabilities": {"healthy": 0.92, "sev1": 0.04, "sev2": 0.01, "sev3": 0.03}, "confidence": 0.75, "...": "..."},
+    "answer": {
+      "choice": "healthy",
+      "probabilities": {
+        "healthy": 0.92,
+        "sev1": 0.04,
+        "sev2": 0.01,
+        "sev3": 0.03
+      },
+      "confidence": 0.75,
+      "...": "..."
+    },
     "state": "request_rate_rps: 9.99 (normal 10, 1× normal)\n...",
     "at": "2026-10-12T15:12:15Z"
   },
@@ -110,6 +123,7 @@ curl localhost:8080/v1/services/echo
 ```
 
 `status` is one of:
+
 - `pending`: not checked yet;
 - `ok`: the last result is recent;
 - `stale`: the last successful check is older than 3 cycles, where a cycle is the longer of `-interval` and services × `-timeout`;

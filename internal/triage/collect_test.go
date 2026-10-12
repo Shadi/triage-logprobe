@@ -24,6 +24,8 @@ type fakeSource struct {
 	mu     sync.Mutex
 	now    map[string][]metrics.Series
 	before map[string][]metrics.Series
+	byDay  map[int64][]metrics.Series
+	dayErr map[int64]error
 	err    error
 	calls  []call
 }
@@ -39,6 +41,9 @@ func (f *fakeSource) QueryRange(_ context.Context, q string, start, end time.Tim
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, call{q: q, start: start, end: end, step: step})
+	if f.byDay != nil {
+		return f.byDay[start.Unix()], f.dayErr[start.Unix()]
+	}
 	return f.before[q], f.err
 }
 
@@ -52,12 +57,12 @@ func series(labels map[string]string, vs ...float64) metrics.Series {
 
 var at = time.Date(2026, 10, 11, 16, 0, 0, 0, time.UTC)
 
-func TestCollect_WindowsAndMedian(t *testing.T) {
+func TestCollect_SameSlotLast7Days(t *testing.T) {
 	src := &fakeSource{
 		now:    map[string][]metrics.Series{"q": {series(map[string]string{"__name__": "x", "pod": "a"}, 9)}},
 		before: map[string][]metrics.Series{"q": {series(map[string]string{"__name__": "x", "pod": "a"}, 1, 2, math.NaN(), 9)}},
 	}
-	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at, 5*time.Minute, 30*time.Minute)
+	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,9 +70,13 @@ func TestCollect_WindowsAndMedian(t *testing.T) {
 	if len(s) != 1 || !s[0].HasNow || s[0].Now != 9 || !s[0].HasBaseline || s[0].Baseline != 2 {
 		t.Fatalf("series = %+v, want now 9 and baseline median 2 (NaN skipped; the mean would be 4)", s)
 	}
+	if s[0].Days != 7 {
+		t.Errorf("days = %d, want 7", s[0].Days)
+	}
 	if _, ok := s[0].Labels["__name__"]; ok {
 		t.Error("__name__ should be dropped")
 	}
+	var starts []time.Time
 	for _, c := range src.calls {
 		switch {
 		case !c.at.IsZero():
@@ -75,10 +84,52 @@ func TestCollect_WindowsAndMedian(t *testing.T) {
 				t.Errorf("instant query at %v, want %v", c.at, at)
 			}
 		default:
-			if !c.end.Equal(at.Add(-5*time.Minute)) || !c.start.Equal(at.Add(-35*time.Minute)) || c.step != time.Minute {
-				t.Errorf("range = %v..%v step %v", c.start, c.end, c.step)
+			starts = append(starts, c.start)
+			if c.end.Sub(c.start) != time.Hour || c.step != 5*time.Minute {
+				t.Errorf("range = %v..%v step %v, want 1h at 5m", c.start, c.end, c.step)
 			}
 		}
+	}
+	slices.SortFunc(starts, func(a, b time.Time) int { return b.Compare(a) })
+	for d, st := range starts {
+		if want := at.In(time.Local).AddDate(0, 0, -(d + 1)).Add(-30 * time.Minute); !st.Equal(want) {
+			t.Errorf("slot %d starts %v, want %v", d+1, st, want)
+		}
+	}
+	if len(starts) != 7 {
+		t.Errorf("range queries = %d, want 7", len(starts))
+	}
+}
+
+func TestCollect_TargetSkipsBaseline(t *testing.T) {
+	src := &fakeSource{now: map[string][]metrics.Series{"q": {series(nil, 0.3)}}}
+	max := 0.01
+	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q", Target: &Target{Max: &max}}}, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(src.calls) != 1 || rs[0].Series[0].HasBaseline {
+		t.Errorf("calls = %+v series = %+v, want only the instant query", src.calls, rs[0].Series)
+	}
+}
+
+func TestCollect_CountsDaysWithData(t *testing.T) {
+	slot := func(d int) int64 { return at.In(time.Local).AddDate(0, 0, -d).Add(-30 * time.Minute).Unix() }
+	a := map[string]string{"pod": "a"}
+	src := &fakeSource{
+		now: map[string][]metrics.Series{"q": {series(a, 5)}},
+		byDay: map[int64][]metrics.Series{
+			slot(1): {series(a, 1, 1)},
+			slot(2): {series(a, 3)},
+			slot(3): {series(a, math.NaN())},
+		},
+	}
+	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := rs[0].Series[0]; s.Days != 2 || s.Baseline != 1 {
+		t.Errorf("series = %+v, want 2 days with data (NaN-only day not counted) and median 1 over pooled points", s)
 	}
 }
 
@@ -90,7 +141,7 @@ func TestCollect_UnionAndNoData(t *testing.T) {
 		}},
 		before: map[string][]metrics.Series{"q": {series(map[string]string{"pod": "gone"}, 4, 4)}},
 	}
-	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}, {Name: "empty", Query: "e"}}, at, time.Minute, time.Hour)
+	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}, {Name: "empty", Query: "e"}}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,12 +165,9 @@ func TestCollect_UnionAndNoData(t *testing.T) {
 
 func TestCollect_Errors(t *testing.T) {
 	src := &fakeSource{err: errors.New("down")}
-	_, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at, time.Minute, time.Hour)
+	_, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at)
 	if err == nil || !strings.Contains(err.Error(), `"m"`) {
 		t.Errorf("err = %v, want it to name the metric", err)
-	}
-	if _, err := Collect(context.Background(), &fakeSource{}, nil, at, 0, time.Hour); err == nil {
-		t.Error("zero window: expected error")
 	}
 }
 
@@ -128,7 +176,7 @@ func TestCollect_KeepsSeriesThatDifferOnlyByName(t *testing.T) {
 		series(map[string]string{"__name__": "a", "pod": "x"}, 1),
 		series(map[string]string{"__name__": "b", "pod": "x"}, 2),
 	}}}
-	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at, time.Minute, time.Hour)
+	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,5 +217,28 @@ func TestMedian_DoesNotMutateInput(t *testing.T) {
 	median(ss)
 	if !slices.Equal(ss, before) {
 		t.Errorf("input changed: %v -> %v", before, ss)
+	}
+}
+
+func TestCollect_FailedDaysDegrade(t *testing.T) {
+	slot := func(d int) int64 { return at.In(time.Local).AddDate(0, 0, -d).Add(-30 * time.Minute).Unix() }
+	src := &fakeSource{
+		now:    map[string][]metrics.Series{"q": {series(nil, 5)}},
+		byDay:  map[int64][]metrics.Series{slot(1): {series(nil, 4)}},
+		dayErr: map[int64]error{},
+	}
+	for d := 2; d <= 7; d++ {
+		src.dayErr[slot(d)] = errors.New("timeout")
+	}
+	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at)
+	if err != nil {
+		t.Fatalf("one good day must be enough: %v", err)
+	}
+	if s := rs[0].Series[0]; s.Days != 1 || s.Baseline != 4 {
+		t.Errorf("series = %+v, want 1 day, baseline 4", s)
+	}
+	src.dayErr[slot(1)] = errors.New("timeout")
+	if _, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at); err == nil || !strings.Contains(err.Error(), "baseline") {
+		t.Errorf("all days failed: err = %v, want a baseline error", err)
 	}
 }

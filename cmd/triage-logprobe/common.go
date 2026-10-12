@@ -14,14 +14,12 @@ import (
 type common struct {
 	prom, ollama, model, rubricPath string
 	rubric                          triage.Rubric
-	window, baseline, timeout       time.Duration
+	timeout                         time.Duration
 	debias                          bool
 }
 
 func addCommonFlags(fs *flag.FlagSet, c *common, timeout time.Duration, timeoutUsage string) {
 	fs.StringVar(&c.prom, "prom", "", "Prometheus base URL, e.g. http://prometheus:9090 (required)")
-	fs.DurationVar(&c.window, "window", 5*time.Minute, "how far back the incident may reach; the baseline ends before it")
-	fs.DurationVar(&c.baseline, "baseline", 30*time.Minute, "length of the normal period before the window")
 	fs.StringVar(&c.ollama, "ollama", ollama.DefaultBaseURL, "Ollama base URL")
 	fs.StringVar(&c.model, "model", decision.DefaultModel, "Ollama model")
 	fs.StringVar(&c.rubricPath, "rubric", "", "rubric JSON file (default: built-in)")
@@ -33,8 +31,8 @@ func (c *common) validate() error {
 	if c.prom == "" {
 		return fmt.Errorf("-prom is required")
 	}
-	if c.window <= 0 || c.baseline <= 0 || c.timeout <= 0 {
-		return fmt.Errorf("-window, -baseline and -timeout must be positive")
+	if c.timeout <= 0 {
+		return fmt.Errorf("-timeout must be positive")
 	}
 	r, err := triage.LoadRubric(c.rubricPath)
 	if err != nil {

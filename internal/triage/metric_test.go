@@ -42,3 +42,25 @@ func TestCheckUnique(t *testing.T) {
 		t.Error("expected duplicate error")
 	}
 }
+
+func TestParseMetric_Targets(t *testing.T) {
+	m, err := ParseMetric(`err_ratio[max=0.01]=sum(rate(x{code=~"5.."}[2m])) / sum(rate(x[2m]))`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Name != "err_ratio" || m.Target == nil || m.Target.Min != nil || *m.Target.Max != 0.01 || m.Query != `sum(rate(x{code=~"5.."}[2m])) / sum(rate(x[2m]))` {
+		t.Errorf("got %+v", m)
+	}
+	m, err = ParseMetric(" replicas [ min = 2 , max=5 ] = up ")
+	if err != nil || *m.Target.Min != 2 || *m.Target.Max != 5 || m.Query != "up" {
+		t.Errorf("spaced range: %+v %v", m, err)
+	}
+	if m, err := ParseMetric("rps=sum(rate(x[2m]))"); err != nil || m.Target != nil {
+		t.Errorf("brackets in the query must not be read as a target: %+v %v", m, err)
+	}
+	for _, bad := range []string{"a[]=up", "a[max]=up", "a[max=x]=up", "a[max=NaN]=up", "a[max=Inf]=up", "a[avg=1]=up", "a[max=1,max=2]=up", "a[min=5,max=1]=up", "a[max=1=up", "a[max=1]="} {
+		if _, err := ParseMetric(bad); err == nil {
+			t.Errorf("%q: expected error", bad)
+		}
+	}
+}

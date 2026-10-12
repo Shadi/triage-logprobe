@@ -24,7 +24,7 @@ func TestCheck(t *testing.T) {
 		now:    map[string][]metrics.Series{"q": {series(nil, 0.3)}},
 		before: map[string][]metrics.Series{"q": {series(nil, 0, 0, 0)}},
 	}
-	p := Params{At: at.In(time.FixedZone("x", 3600)), Window: 5 * time.Minute, Baseline: 30 * time.Minute}
+	p := Params{At: at.In(time.FixedZone("x", 3600))}
 	res, err := Check(context.Background(), src, e, r, []Metric{{Name: "error_5xx_ratio", Query: "q"}}, p)
 	if err != nil {
 		t.Fatal(err)
@@ -35,8 +35,8 @@ func TestCheck(t *testing.T) {
 	if !strings.Contains(res.State, "error_5xx_ratio: 30%") || len(res.Readings) != 1 {
 		t.Errorf("state = %q readings = %d", res.State, len(res.Readings))
 	}
-	if res.At != at || res.Window != "5m0s" || res.Baseline != "30m0s" {
-		t.Errorf("at=%v window=%q baseline=%q", res.At, res.Window, res.Baseline)
+	if res.At != at {
+		t.Errorf("at = %v, want %v in UTC", res.At, at)
 	}
 	if _, ok := res.LatencyMS["model"]; !ok {
 		t.Error("missing model latency")

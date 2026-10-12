@@ -2,6 +2,7 @@ package triage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"math"
@@ -15,8 +16,10 @@ import (
 )
 
 const (
-	baselinePoints       = 30
-	maxConcurrentMetrics = 8
+	baselineDays         = 7
+	baselineSlot         = 30 * time.Minute
+	baselineStep         = 5 * time.Minute
+	maxConcurrentQueries = 8
 )
 
 type SeriesReading struct {
@@ -25,6 +28,7 @@ type SeriesReading struct {
 	Baseline    float64           `json:"baseline"`
 	HasNow      bool              `json:"has_now"`
 	HasBaseline bool              `json:"has_baseline"`
+	Days        int               `json:"baseline_days,omitempty"`
 }
 
 type Reading struct {
@@ -32,58 +36,81 @@ type Reading struct {
 	Series []SeriesReading `json:"series"`
 }
 
-func Collect(ctx context.Context, src metrics.Source, ms []Metric, at time.Time, window, baseline time.Duration) ([]Reading, error) {
-	if window <= 0 || baseline <= 0 {
-		return nil, fmt.Errorf("window and baseline must be positive")
-	}
-	end := at.Add(-window)
-	start := end.Add(-baseline)
-	step := max(baseline/baselinePoints, 15*time.Second)
-
-	out := make([]Reading, len(ms))
+func Collect(ctx context.Context, src metrics.Source, ms []Metric, at time.Time) ([]Reading, error) {
+	local := at.In(time.Local)
+	now := make([][]metrics.Series, len(ms))
+	days := make([][][]metrics.Series, len(ms))
+	dayErrs := make([][]error, len(ms))
 	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(maxConcurrentMetrics)
+	g.SetLimit(maxConcurrentQueries)
 	for i, m := range ms {
 		g.Go(func() error {
-			now, err := src.Query(gctx, m.Query, at)
+			ss, err := src.Query(gctx, m.Query, at)
 			if err != nil {
 				return fmt.Errorf("metric %q: %w", m.Name, err)
 			}
-			before, err := src.QueryRange(gctx, m.Query, start, end, step)
-			if err != nil {
-				return fmt.Errorf("metric %q baseline range query: %w", m.Name, err)
-			}
-			out[i] = Reading{Metric: m, Series: merge(now, before)}
+			now[i] = ss
 			return nil
 		})
+		if m.Target != nil {
+			continue
+		}
+		days[i] = make([][]metrics.Series, baselineDays)
+		dayErrs[i] = make([]error, baselineDays)
+		for d := range baselineDays {
+			g.Go(func() error {
+				day := local.AddDate(0, 0, -(d + 1))
+				days[i][d], dayErrs[i][d] = src.QueryRange(gctx, m.Query, day.Add(-baselineSlot), day.Add(baselineSlot), baselineStep)
+				return nil
+			})
+		}
 	}
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+	out := make([]Reading, len(ms))
+	for i, m := range ms {
+		if dayErrs[i] != nil && !slices.ContainsFunc(dayErrs[i], func(e error) bool { return e == nil }) {
+			return nil, fmt.Errorf("metric %q baseline: %w", m.Name, errors.Join(dayErrs[i]...))
+		}
+		out[i] = Reading{Metric: m, Series: merge(now[i], days[i])}
+	}
 	return out, nil
 }
 
-func merge(now, before []metrics.Series) []SeriesReading {
+func merge(now []metrics.Series, days [][]metrics.Series) []SeriesReading {
 	byKey := map[string]*SeriesReading{}
-	get := func(l map[string]string) *SeriesReading {
+	pooled := map[string][]metrics.Sample{}
+	seen := map[string]int{}
+	get := func(l map[string]string) (string, *SeriesReading) {
 		k := labelKey(l)
 		if r, ok := byKey[k]; ok {
-			return r
+			return k, r
 		}
 		r := &SeriesReading{Labels: withoutName(l)}
 		byKey[k] = r
-		return r
+		return k, r
 	}
 	for _, s := range now {
-		r := get(s.Labels)
+		_, r := get(s.Labels)
 		if len(s.Samples) > 0 && finite(s.Samples[len(s.Samples)-1].V) {
 			r.Now, r.HasNow = s.Samples[len(s.Samples)-1].V, true
 		}
 	}
-	for _, s := range before {
-		r := get(s.Labels)
-		if v, ok := median(s.Samples); ok {
-			r.Baseline, r.HasBaseline = v, true
+	for _, day := range days {
+		counted := map[string]bool{}
+		for _, s := range day {
+			k, _ := get(s.Labels)
+			pooled[k] = append(pooled[k], s.Samples...)
+			if !counted[k] && slices.ContainsFunc(s.Samples, func(x metrics.Sample) bool { return finite(x.V) }) {
+				counted[k] = true
+				seen[k]++
+			}
+		}
+	}
+	for k, ss := range pooled {
+		if v, ok := median(ss); ok {
+			byKey[k].Baseline, byKey[k].HasBaseline, byKey[k].Days = v, true, seen[k]
 		}
 	}
 	out := make([]SeriesReading, 0, len(byKey))

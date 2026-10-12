@@ -10,9 +10,7 @@ import (
 )
 
 type Params struct {
-	At       time.Time
-	Window   time.Duration
-	Baseline time.Duration
+	At time.Time
 }
 
 type Result struct {
@@ -21,19 +19,17 @@ type Result struct {
 	State     string           `json:"state"`
 	Readings  []Reading        `json:"readings,omitempty"`
 	At        time.Time        `json:"at"`
-	Window    string           `json:"window"`
-	Baseline  string           `json:"baseline"`
 	LatencyMS map[string]int64 `json:"latency_ms"`
 }
 
 func Check(ctx context.Context, src metrics.Source, e *decision.Engine, r Rubric, ms []Metric, p Params) (Result, error) {
 	t0 := time.Now()
-	readings, err := Collect(ctx, src, ms, p.At, p.Window, p.Baseline)
+	readings, err := Collect(ctx, src, ms, p.At)
 	if err != nil {
 		return Result{}, err
 	}
 	t1 := time.Now()
-	state := RenderState(readings, p.Window, p.Baseline)
+	state := RenderState(readings)
 	ans, err := Assess(ctx, e, r, state)
 	if err != nil {
 		return Result{}, err
@@ -45,8 +41,6 @@ func Check(ctx context.Context, src metrics.Source, e *decision.Engine, r Rubric
 		State:     state,
 		Readings:  readings,
 		At:        p.At.UTC(),
-		Window:    p.Window.String(),
-		Baseline:  p.Baseline.String(),
 		LatencyMS: map[string]int64{"metrics": t1.Sub(t0).Milliseconds(), "model": t2.Sub(t1).Milliseconds()},
 	}, nil
 }

@@ -12,14 +12,14 @@ func TestParseFlags(t *testing.T) {
 	if err := os.WriteFile(file, []byte("# c\nrps=sum(rate(x[1m]))\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := parseFlags([]string{"-prom", "http://p", "-metrics-file", file, "-metric", "up=up", "-at", "2026-10-11T16:00:00Z", "-window", "2m"})
+	cfg, err := parseFlags([]string{"-prom", "http://p", "-metrics-file", file, "-metric", "up=up", "-at", "2026-10-11T16:00:00Z"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(cfg.metrics) != 2 || cfg.metrics[0].Name != "rps" || cfg.metrics[1].Name != "up" {
 		t.Errorf("metrics = %+v", cfg.metrics)
 	}
-	if !cfg.at.Equal(time.Date(2026, 10, 11, 16, 0, 0, 0, time.UTC)) || cfg.window != 2*time.Minute || !cfg.debias {
+	if !cfg.at.Equal(time.Date(2026, 10, 11, 16, 0, 0, 0, time.UTC)) || !cfg.debias {
 		t.Errorf("cfg = %+v", cfg)
 	}
 
@@ -34,7 +34,7 @@ func TestParseFlags(t *testing.T) {
 		"bad metric":      append(p, "-metric", "nope"),
 		"duplicate":       append(p, "-metric", "a=up", "-metric", "a=up"),
 		"bad at":          append(p, "-metric", "a=up", "-at", "yesterday"),
-		"zero window":     append(p, "-metric", "a=up", "-window", "0s"),
+		"zero timeout":    append(p, "-metric", "a=up", "-timeout", "0s"),
 		"extra args":      append(p, "-metric", "a=up", "stray"),
 		"missing file":    append(p, "-metrics-file", filepath.Join(t.TempDir(), "nope")),
 		"reserved rubric": append(p, "-metric", "a=up", "-rubric", badRubric),

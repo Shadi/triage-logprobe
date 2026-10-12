@@ -122,7 +122,7 @@ func serve(cfg serveConfig, log *slog.Logger) error {
 		Timeout:  cfg.timeout,
 		Log:      log,
 		Check: func(ctx context.Context, svc triage.Service, at time.Time) (triage.Result, error) {
-			return triage.Check(ctx, prom, engine, cfg.rubric, svc.Metrics, triage.Params{At: at, Window: cfg.window, Baseline: cfg.baseline})
+			return triage.Check(ctx, prom, engine, cfg.rubric, svc.Metrics, triage.Params{At: at})
 		},
 	}
 

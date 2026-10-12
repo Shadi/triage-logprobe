@@ -126,7 +126,7 @@ func run(cfg config) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.timeout)
 	defer cancel()
-	res, err := triage.Check(ctx, prom, engine, cfg.rubric, cfg.metrics, triage.Params{At: cfg.at, Window: cfg.window, Baseline: cfg.baseline})
+	res, err := triage.Check(ctx, prom, engine, cfg.rubric, cfg.metrics, triage.Params{At: cfg.at})
 	if err != nil {
 		return err
 	}
