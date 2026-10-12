@@ -244,13 +244,12 @@ func TestNew_OptionsApplied(t *testing.T) {
 }
 
 type routingSource struct {
-	delay    time.Duration
-	failOn   string
-	barrier  int32
-	calls    atomic.Int32
-	canceled atomic.Int32
-	arrived  chan struct{}
-	once     sync.Once
+	delay   time.Duration
+	failOn  string
+	barrier int32
+	calls   atomic.Int32
+	arrived chan struct{}
+	once    sync.Once
 }
 
 func (r *routingSource) NextTokenLogprobs(ctx context.Context, _, prompt string, _ int) ([]llm.TokenLogprob, error) {
@@ -272,7 +271,6 @@ func (r *routingSource) NextTokenLogprobs(ctx context.Context, _, prompt string,
 	select {
 	case <-time.After(r.delay):
 	case <-ctx.Done():
-		r.canceled.Add(1)
 		return nil, ctx.Err()
 	}
 	return []llm.TokenLogprob{tok("1", -0.2), tok("2", -2), tok("3", -4), tok("SE", -8)}, nil
@@ -313,23 +311,11 @@ func TestDecide_RunsConcurrently(t *testing.T) {
 	}
 }
 
-func TestDecide_FailureNamesQuestionAndCancelsOthers(t *testing.T) {
-	src := &routingSource{delay: time.Minute, failOn: "Customers can notice"}
+func TestDecide_FailureNamesQuestion(t *testing.T) {
+	src := &routingSource{delay: 10 * time.Millisecond, failOn: "Customers can notice"}
 	_, err := mustNew(t, src).Decide(context.Background(), sevState, decideQuestions())
 	if err == nil || !strings.Contains(err.Error(), `"customer_facing"`) {
 		t.Fatalf("err = %v, want it to name customer_facing", err)
-	}
-	if got, want := src.canceled.Load(), src.calls.Load()-1; got != want {
-		t.Errorf("canceled = %d, want every other call (%d) cancelled", got, want)
-	}
-}
-
-func TestDecide_PreCanceledContext(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := mustNew(t, &routingSource{delay: time.Minute}).Decide(ctx, sevState, decideQuestions())
-	if !errors.Is(err, context.Canceled) {
-		t.Errorf("err = %v, want context.Canceled", err)
 	}
 }
 

@@ -61,6 +61,62 @@ error_5xx_ratio=(sum(rate(istio_requests_total{destination_service_name="checkou
 | `-debias`                               | `true`                                  | Ask in both option orders                              |
 | `-show-state` / `-json`                 |                                         | Print the model input / full JSON result               |
 
+## Serve mode
+
+Runs continuously and checks every service on an interval. The last result for each service is kept in memory and served over HTTP.
+
+```sh
+go run ./cmd/triage-logprobe serve \
+  -prom http://prometheus:9090 \
+  -service echo=echo.txt \
+  -service checkout=checkout.txt
+```
+
+Each `-service name=FILE` points to a metrics file in the format above. Services are checked one after another.
+
+| Flag        | Default    |                                                        |
+| ----------- | ---------- | ------------------------------------------------------ |
+| `-service`  | (required) | `name=metrics-file`, repeatable                        |
+| `-interval` | `60s`      | How often every service is checked (min `10s`)         |
+| `-listen`   | `:8080`    | HTTP address                                           |
+| `-timeout`  | `-interval`| Timeout per check (at most `-interval`)                |
+
+`-prom`, `-window`, `-baseline`, `-model`, `-ollama`, `-rubric` and `-debias` work as in the CLI.
+
+| Endpoint                   |                                                                  |
+| -------------------------- | ---------------------------------------------------------------- |
+| `GET /v1/services`         | Last state of every service                                      |
+| `GET /v1/services/{name}`  | Last state of one service. Add `?verbose=1` for the raw readings |
+| `GET /healthz`             | Process is up                                                    |
+| `GET /readyz`              | 200 once every service has succeeded at least once               |
+
+```sh
+curl localhost:8080/v1/services/echo
+```
+
+```json
+{
+  "service": "echo",
+  "status": "ok",
+  "last": {
+    "severity": "HEALTHY",
+    "answer": {"choice": "healthy", "probabilities": {"healthy": 0.92, "sev1": 0.04, "sev2": 0.01, "sev3": 0.03}, "confidence": 0.75, "...": "..."},
+    "state": "request_rate_rps: 9.99 (normal 10, 1× normal)\n...",
+    "at": "2026-10-12T15:12:15Z"
+  },
+  "last_ok_at": "2026-10-12T15:12:15Z",
+  "checked_at": "2026-10-12T15:12:15Z"
+}
+```
+
+`status` is one of:
+- `pending`: not checked yet;
+- `ok`: the last result is recent;
+- `stale`: the last successful check is older than 3 cycles, where a cycle is the longer of `-interval` and services × `-timeout`;
+- `error`: no check has succeeded yet.
+
+A failed check keeps the previous result and sets `last_error` and `last_error_at`.
+
 ## Tests
 
 ```sh

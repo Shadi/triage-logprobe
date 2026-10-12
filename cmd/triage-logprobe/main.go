@@ -10,9 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/decision"
-	"github.com/shadi/triage-logprobe/internal/llm/ollama"
-	"github.com/shadi/triage-logprobe/internal/metrics/prometheus"
 	"github.com/shadi/triage-logprobe/internal/triage"
 )
 
@@ -36,28 +33,23 @@ func (m *metricFlags) Set(v string) error {
 }
 
 type config struct {
-	prom, ollama, model, rubricPath, metricsFile string
-	rubric                                       triage.Rubric
-	metrics                                      metricFlags
-	at                                           time.Time
-	window, baseline, timeout                    time.Duration
-	debias, asJSON, showState                    bool
+	common
+	metricsFile       string
+	metrics           metricFlags
+	at                time.Time
+	asJSON, showState bool
 }
 
 type output struct {
-	Severity  string           `json:"severity"`
-	Answer    decision.Answer  `json:"answer"`
-	State     string           `json:"state"`
-	Readings  []triage.Reading `json:"readings"`
-	At        time.Time        `json:"at"`
-	Window    string           `json:"window"`
-	Baseline  string           `json:"baseline"`
-	Model     string           `json:"model"`
-	Debias    bool             `json:"debias"`
-	LatencyMS map[string]int64 `json:"latency_ms"`
+	triage.Result
+	Model  string `json:"model"`
+	Debias bool   `json:"debias"`
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "serve" {
+		os.Exit(serveMain(os.Args[2:]))
+	}
 	cfg, err := parseFlags(os.Args[1:])
 	if errors.Is(err, flag.ErrHelp) {
 		os.Exit(0)
@@ -76,27 +68,21 @@ func parseFlags(args []string) (config, error) {
 	var cfg config
 	var at string
 	fs := flag.NewFlagSet("triage-logprobe", flag.ContinueOnError)
-	fs.StringVar(&cfg.prom, "prom", "", "Prometheus base URL, e.g. http://prometheus:9090 (required)")
+	addCommonFlags(fs, &cfg.common, 2*time.Minute, "overall timeout")
 	fs.Var(&cfg.metrics, "metric", "metric as name=PROMQL; repeatable")
 	fs.StringVar(&cfg.metricsFile, "metrics-file", "", "file with one name=PROMQL per line (# comments allowed)")
 	fs.StringVar(&at, "at", "", "evaluation time, RFC3339 (default now)")
-	fs.DurationVar(&cfg.window, "window", 5*time.Minute, "how far back the incident may reach; the baseline ends before it")
-	fs.DurationVar(&cfg.baseline, "baseline", 30*time.Minute, "length of the normal period before the window")
-	fs.StringVar(&cfg.ollama, "ollama", ollama.DefaultBaseURL, "Ollama base URL")
-	fs.StringVar(&cfg.model, "model", decision.DefaultModel, "Ollama model")
-	fs.StringVar(&cfg.rubricPath, "rubric", "", "rubric JSON file (default: built-in)")
-	fs.BoolVar(&cfg.debias, "debias", true, "ask in forward and reversed option order")
 	fs.BoolVar(&cfg.asJSON, "json", false, "print JSON")
 	fs.BoolVar(&cfg.showState, "show-state", false, "print the state sent to the model")
-	fs.DurationVar(&cfg.timeout, "timeout", 2*time.Minute, "overall timeout")
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "Usage: triage-logprobe [flags]\n       triage-logprobe serve [flags]\n\n")
+		fs.PrintDefaults()
+	}
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return cfg, err
 		}
 		return cfg, fmt.Errorf("run with -h for usage")
-	}
-	if cfg.prom == "" {
-		return cfg, fmt.Errorf("-prom is required")
 	}
 	if fs.NArg() > 0 {
 		return cfg, fmt.Errorf("unexpected arguments %q", fs.Args())
@@ -119,9 +105,6 @@ func parseFlags(args []string) (config, error) {
 	if err := triage.CheckUnique(cfg.metrics); err != nil {
 		return cfg, err
 	}
-	if cfg.window <= 0 || cfg.baseline <= 0 || cfg.timeout <= 0 {
-		return cfg, fmt.Errorf("-window, -baseline and -timeout must be positive")
-	}
 	cfg.at = time.Now()
 	if at != "" {
 		t, err := time.Parse(time.RFC3339, at)
@@ -130,67 +113,30 @@ func parseFlags(args []string) (config, error) {
 		}
 		cfg.at = t
 	}
-	r, err := triage.LoadRubric(cfg.rubricPath)
-	if err != nil {
+	if err := cfg.validate(); err != nil {
 		return cfg, err
 	}
-	if _, err := decision.BuildPrompt(decision.QwenNoThink, decision.DefaultFormat, r.System, "check", r.SevQuestion()); err != nil {
-		return cfg, fmt.Errorf("rubric: %w", err)
-	}
-	cfg.rubric = r
 	return cfg, nil
 }
 
 func run(cfg config) error {
-	rubric := cfg.rubric
-	prom, err := prometheus.New(cfg.prom)
+	prom, engine, err := cfg.clients(func(q, w string) { fmt.Fprintf(os.Stderr, "prometheus warning: %s (%s)\n", w, q) })
 	if err != nil {
 		return err
 	}
-	prom.Warn = func(q, w string) { fmt.Fprintf(os.Stderr, "prometheus warning: %s (%s)\n", w, q) }
-	engine, err := decision.New(ollama.New(cfg.ollama),
-		decision.WithModel(cfg.model),
-		decision.WithSystem(rubric.System),
-		decision.WithDebias(cfg.debias),
-	)
-	if err != nil {
-		return err
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.timeout)
 	defer cancel()
-
-	t0 := time.Now()
-	readings, err := triage.Collect(ctx, prom, cfg.metrics, cfg.at, cfg.window, cfg.baseline)
+	res, err := triage.Check(ctx, prom, engine, cfg.rubric, cfg.metrics, triage.Params{At: cfg.at, Window: cfg.window, Baseline: cfg.baseline})
 	if err != nil {
 		return err
 	}
-	t1 := time.Now()
-	state := triage.RenderState(readings, cfg.window, cfg.baseline)
-	ans, err := triage.Assess(ctx, engine, rubric, state)
-	if err != nil {
-		return err
-	}
-	t2 := time.Now()
-
-	out := output{
-		Severity:  strings.ToUpper(ans.Choice),
-		Answer:    ans,
-		State:     state,
-		Readings:  readings,
-		At:        cfg.at.UTC(),
-		Window:    cfg.window.String(),
-		Baseline:  cfg.baseline.String(),
-		Model:     cfg.model,
-		Debias:    cfg.debias,
-		LatencyMS: map[string]int64{"metrics": t1.Sub(t0).Milliseconds(), "model": t2.Sub(t1).Milliseconds()},
-	}
+	out := output{Result: res, Model: cfg.model, Debias: cfg.debias}
 	if cfg.asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
 	}
-	printText(out, rubric, cfg.showState)
+	printText(out, cfg.rubric, cfg.showState)
 	return nil
 }
 

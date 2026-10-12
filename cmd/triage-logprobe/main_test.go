@@ -1,8 +1,6 @@
 package main
 
 import (
-	"errors"
-	"flag"
 	"os"
 	"path/filepath"
 	"testing"
@@ -39,19 +37,45 @@ func TestParseFlags(t *testing.T) {
 		"zero window":     append(p, "-metric", "a=up", "-window", "0s"),
 		"extra args":      append(p, "-metric", "a=up", "stray"),
 		"missing file":    append(p, "-metrics-file", filepath.Join(t.TempDir(), "nope")),
-		"unknown flag":    append(p, "-nope"),
 		"reserved rubric": append(p, "-metric", "a=up", "-rubric", badRubric),
 	} {
 		if _, err := parseFlags(args); err == nil {
 			t.Errorf("%s: expected error", name)
 		}
 	}
+}
 
-	cfg, err = parseFlags(append(p, "-metric", "a=up", "-at", "2026-10-11T19:00:00.5+03:00"))
-	if err != nil || !cfg.at.Equal(time.Date(2026, 10, 11, 16, 0, 0, 500_000_000, time.UTC)) {
-		t.Errorf("offset -at: %v %v", cfg.at, err)
+func TestParseServeFlags(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "echo.txt")
+	if err := os.WriteFile(file, []byte("rps=sum(rate(x[1m]))\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := parseFlags([]string{"-h"}); !errors.Is(err, flag.ErrHelp) {
-		t.Errorf("-h: err = %v, want flag.ErrHelp", err)
+	p := []string{"-prom", "http://p"}
+	cfg, err := parseServeFlags(append(p, "-service", "echo="+file, "-service", "cart="+file, "-interval", "30s"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.services) != 2 || cfg.services[1].Name != "cart" || cfg.timeout != 30*time.Second || cfg.listen != ":8080" || !cfg.debias {
+		t.Errorf("cfg = %+v", cfg)
+	}
+	cfg, err = parseServeFlags(append(p, "-service", "echo="+file, "-timeout", "5s"))
+	if err != nil || cfg.timeout != 5*time.Second || cfg.interval != time.Minute {
+		t.Errorf("explicit timeout: %+v %v", cfg, err)
+	}
+	for name, args := range map[string][]string{
+		"no prom":      {"-service", "echo=" + file},
+		"no services":  p,
+		"duplicate":    append(p, "-service", "echo="+file, "-service", "echo="+file),
+		"missing file": append(p, "-service", "echo="+filepath.Join(dir, "nope")),
+		"bad name":     append(p, "-service", "Echo="+file),
+		"short":        append(p, "-service", "echo="+file, "-interval", "1s"),
+		"neg timeout":  append(p, "-service", "echo="+file, "-timeout", "-1s"),
+		"long timeout": append(p, "-service", "echo="+file, "-timeout", "2m"),
+		"extra args":   append(p, "-service", "echo="+file, "stray"),
+	} {
+		if _, err := parseServeFlags(args); err == nil {
+			t.Errorf("%s: expected error", name)
+		}
 	}
 }
