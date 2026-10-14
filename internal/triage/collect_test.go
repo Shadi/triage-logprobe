@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/metrics"
+	"github.com/shadi/triage-logprobs/internal/metrics"
 )
 
 type call struct {

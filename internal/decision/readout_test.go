@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/shadi/triage-logprobe/internal/llm"
+	"github.com/shadi/triage-logprobs/internal/llm"
 )
 
 const eps = 1e-9

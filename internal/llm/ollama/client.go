@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/llm"
+	"github.com/shadi/triage-logprobs/internal/llm"
 )
 
 const (

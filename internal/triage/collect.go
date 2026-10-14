@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/shadi/triage-logprobe/internal/metrics"
+	"github.com/shadi/triage-logprobs/internal/metrics"
 )
 
 const (

@@ -2,8 +2,8 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: triage-logprobe-services
-  namespace: triage-logprobe
+  name: triage-logprobs-services
+  namespace: triage-logprobs
 data:
   checkout.yaml: |
     sources:
@@ -34,10 +34,10 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: triage-logprobe
-  namespace: triage-logprobe
+  name: triage-logprobs
+  namespace: triage-logprobs
   labels:
-    app: triage-logprobe
+    app: triage-logprobs
 spec:
   replicas: 1
   strategy:
@@ -47,11 +47,11 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: triage-logprobe
+      app: triage-logprobs
   template:
     metadata:
       labels:
-        app: triage-logprobe
+        app: triage-logprobs
     spec:
       automountServiceAccountToken: false
       securityContext:
@@ -59,8 +59,8 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: triage-logprobe
-          image: ghcr.io/shadi/triage-logprobe:main
+        - name: triage-logprobs
+          image: ghcr.io/shadi/triage-logprobs:main
           args:
             - serve
             - -prom
@@ -72,9 +72,9 @@ spec:
             - -timeout
             - 20s
             - -service
-            - checkout=/etc/triage-logprobe/checkout.yaml
+            - checkout=/etc/triage-logprobs/checkout.yaml
             - -service
-            - storefront=/etc/triage-logprobe/storefront.yaml
+            - storefront=/etc/triage-logprobs/storefront.yaml
           ports:
             - name: http
               containerPort: 8080
@@ -101,21 +101,21 @@ spec:
               drop: [ALL]
           volumeMounts:
             - name: services
-              mountPath: /etc/triage-logprobe
+              mountPath: /etc/triage-logprobs
               readOnly: true
       volumes:
         - name: services
           configMap:
-            name: triage-logprobe-services
+            name: triage-logprobs-services
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: triage-logprobe
-  namespace: triage-logprobe
+  name: triage-logprobs
+  namespace: triage-logprobs
 spec:
   selector:
-    app: triage-logprobe
+    app: triage-logprobs
   ports:
     - name: http
       port: 8080

@@ -14,7 +14,7 @@ import (
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadog"
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadogV1"
 
-	"github.com/shadi/triage-logprobe/internal/metrics"
+	"github.com/shadi/triage-logprobs/internal/metrics"
 )
 
 const (

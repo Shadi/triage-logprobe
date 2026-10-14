@@ -7,7 +7,7 @@ import (
 
 	"github.com/DataDog/datadog-api-client-go/v2/api/datadogV1"
 
-	"github.com/shadi/triage-logprobe/internal/metrics"
+	"github.com/shadi/triage-logprobs/internal/metrics"
 )
 
 func p(v float64) *float64 { return &v }

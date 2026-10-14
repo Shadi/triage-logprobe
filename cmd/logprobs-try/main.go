@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/decision"
-	"github.com/shadi/triage-logprobe/internal/llm/ollama"
+	"github.com/shadi/triage-logprobs/internal/decision"
+	"github.com/shadi/triage-logprobs/internal/llm/ollama"
 )
 
 type optionFlags []decision.Option

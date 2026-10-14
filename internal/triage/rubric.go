@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"os"
 
-	triagelogprobe "github.com/shadi/triage-logprobe"
-	"github.com/shadi/triage-logprobe/internal/decision"
+	triagelogprobs "github.com/shadi/triage-logprobs"
+	"github.com/shadi/triage-logprobs/internal/decision"
 )
 
 type Rubric struct {
@@ -17,7 +17,7 @@ type Rubric struct {
 }
 
 func DefaultRubric() (Rubric, error) {
-	return parseRubric([]byte(triagelogprobe.Rubric))
+	return parseRubric([]byte(triagelogprobs.Rubric))
 }
 
 func LoadRubric(path string) (Rubric, error) {

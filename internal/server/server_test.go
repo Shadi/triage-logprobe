@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/decision"
-	"github.com/shadi/triage-logprobe/internal/triage"
+	"github.com/shadi/triage-logprobs/internal/decision"
+	"github.com/shadi/triage-logprobs/internal/triage"
 )
 
 var t0 = time.Date(2026, 10, 12, 10, 0, 0, 0, time.UTC)

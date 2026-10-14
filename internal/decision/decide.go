@@ -8,7 +8,7 @@ import (
 	"math"
 	"slices"
 
-	"github.com/shadi/triage-logprobe/internal/llm"
+	"github.com/shadi/triage-logprobs/internal/llm"
 	"golang.org/x/sync/errgroup"
 )
 

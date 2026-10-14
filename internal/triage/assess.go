@@ -3,7 +3,7 @@ package triage
 import (
 	"context"
 
-	"github.com/shadi/triage-logprobe/internal/decision"
+	"github.com/shadi/triage-logprobs/internal/decision"
 )
 
 const SeverityID = "severity"

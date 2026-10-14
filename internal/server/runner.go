@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/triage"
+	"github.com/shadi/triage-logprobs/internal/triage"
 )
 
 type CheckFunc func(ctx context.Context, svc triage.Service, at time.Time) (triage.Result, error)

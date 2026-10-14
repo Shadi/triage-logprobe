@@ -1,4 +1,4 @@
-package triagelogprobe
+package triagelogprobs
 
 import _ "embed"
 

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/triage"
+	"github.com/shadi/triage-logprobs/internal/triage"
 )
 
 type config struct {
@@ -48,14 +48,14 @@ func main() {
 func parseFlags(args []string) (config, error) {
 	var cfg config
 	var at string
-	fs := flag.NewFlagSet("triage-logprobe", flag.ContinueOnError)
+	fs := flag.NewFlagSet("triage-logprobs", flag.ContinueOnError)
 	addCommonFlags(fs, &cfg.common, 2*time.Minute, "overall timeout")
 	fs.StringVar(&cfg.metricsFile, "metrics-file", "", "YAML file with the metrics to evaluate (required)")
 	fs.StringVar(&at, "at", "", "evaluation time, RFC3339 (default now)")
 	fs.BoolVar(&cfg.asJSON, "json", false, "print JSON")
 	fs.BoolVar(&cfg.showState, "show-state", false, "print the state sent to the model")
 	fs.Usage = func() {
-		fmt.Fprintf(fs.Output(), "Usage: triage-logprobe [flags]\n       triage-logprobe serve [flags]\n\n")
+		fmt.Fprintf(fs.Output(), "Usage: triage-logprobs [flags]\n       triage-logprobs serve [flags]\n\n")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {

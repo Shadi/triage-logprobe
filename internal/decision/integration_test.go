@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/llm/ollama"
+	"github.com/shadi/triage-logprobs/internal/llm/ollama"
 )
 
 func integrationEngine(t *testing.T, opts ...EngineOption) *Engine {
 	t.Helper()
-	if os.Getenv("LOGPROBE_IT") != "1" {
-		t.Skip("set LOGPROBE_IT=1 to run against a local Ollama")
+	if os.Getenv("LOGPROBS_IT") != "1" {
+		t.Skip("set LOGPROBS_IT=1 to run against a local Ollama")
 	}
-	model := os.Getenv("LOGPROBE_MODEL")
+	model := os.Getenv("LOGPROBS_MODEL")
 	if model == "" {
 		model = DefaultModel
 	}

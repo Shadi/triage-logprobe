@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/decision"
-	"github.com/shadi/triage-logprobe/internal/metrics"
+	"github.com/shadi/triage-logprobs/internal/decision"
+	"github.com/shadi/triage-logprobs/internal/metrics"
 )
 
 type Params struct {

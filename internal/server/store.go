@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/triage"
+	"github.com/shadi/triage-logprobs/internal/triage"
 )
 
 const (

@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/shadi/triage-logprobe/internal/llm"
+	"github.com/shadi/triage-logprobs/internal/llm"
 )
 
 var ErrNoOptionTokens = errors.New("decision: no option IDs among the top tokens")

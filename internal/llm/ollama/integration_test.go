@@ -8,10 +8,10 @@ import (
 )
 
 func TestIntegration_NextTokenLogprobs(t *testing.T) {
-	if os.Getenv("LOGPROBE_IT") != "1" {
-		t.Skip("set LOGPROBE_IT=1 to run against a local Ollama")
+	if os.Getenv("LOGPROBS_IT") != "1" {
+		t.Skip("set LOGPROBS_IT=1 to run against a local Ollama")
 	}
-	model := os.Getenv("LOGPROBE_MODEL")
+	model := os.Getenv("LOGPROBS_MODEL")
 	if model == "" {
 		model = "qwen3.5:4b"
 	}

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shadi/triage-logprobe/internal/decision"
-	"github.com/shadi/triage-logprobe/internal/llm"
+	"github.com/shadi/triage-logprobs/internal/decision"
+	"github.com/shadi/triage-logprobs/internal/llm"
 )
 
 func TestDefaultRubric(t *testing.T) {

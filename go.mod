@@ -1,4 +1,4 @@
-module github.com/shadi/triage-logprobe
+module github.com/shadi/triage-logprobs
 
 go 1.27.1
 

@@ -1,4 +1,4 @@
-# triage-logprobe
+# triage-logprobs
 
 Jev-style prototype of a triage decision service that reads metrics listed in [echo.yaml](echo.yaml) from Prometheus or Datadog and use a self-hosted small qwen model to classify the severity.
 
@@ -25,7 +25,7 @@ Ollama listens on `http://localhost:11434` by default. Use `-ollama` for another
 ## Run
 
 ```sh
-go run ./cmd/triage-logprobe \
+go run ./cmd/triage-logprobs \
   -prom http://prometheus:9090 \
   -metrics-file echo.yaml \
   -show-state
@@ -92,7 +92,7 @@ Only the sources used in the metric files need configuring.
 Runs continuously and checks every service on an interval. The last result for each service is kept in memory and served over HTTP.
 
 ```sh
-go run ./cmd/triage-logprobe serve \
+go run ./cmd/triage-logprobs serve \
   -prom http://prometheus:9090 \
   -service echo=echo.yaml \
   -service checkout=checkout.yaml
@@ -163,5 +163,5 @@ A failed check keeps the previous result and sets `last_error` and `last_error_a
 
 ```sh
 go test ./...                    # unit tests, no services needed
-LOGPROBE_IT=1 go test ./...      # also run integration tests against a local Ollama
+LOGPROBS_IT=1 go test ./...      # also run integration tests against a local Ollama
 ```

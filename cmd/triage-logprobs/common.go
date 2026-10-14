@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/decision"
-	"github.com/shadi/triage-logprobe/internal/llm/ollama"
-	"github.com/shadi/triage-logprobe/internal/metrics"
-	"github.com/shadi/triage-logprobe/internal/metrics/datadog"
-	"github.com/shadi/triage-logprobe/internal/metrics/prometheus"
-	"github.com/shadi/triage-logprobe/internal/triage"
+	"github.com/shadi/triage-logprobs/internal/decision"
+	"github.com/shadi/triage-logprobs/internal/llm/ollama"
+	"github.com/shadi/triage-logprobs/internal/metrics"
+	"github.com/shadi/triage-logprobs/internal/metrics/datadog"
+	"github.com/shadi/triage-logprobs/internal/metrics/prometheus"
+	"github.com/shadi/triage-logprobs/internal/triage"
 )
 
 type warnFunc func(query, warning string)

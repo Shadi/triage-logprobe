@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/shadi/triage-logprobe/internal/server"
-	"github.com/shadi/triage-logprobe/internal/triage"
+	"github.com/shadi/triage-logprobs/internal/server"
+	"github.com/shadi/triage-logprobs/internal/triage"
 )
 
 const (
@@ -69,7 +69,7 @@ func serveMain(args []string) int {
 
 func parseServeFlags(args []string, warn warnFunc) (serveConfig, error) {
 	var cfg serveConfig
-	fs := flag.NewFlagSet("triage-logprobe serve", flag.ContinueOnError)
+	fs := flag.NewFlagSet("triage-logprobs serve", flag.ContinueOnError)
 	addCommonFlags(fs, &cfg.common, 0, "timeout per check (default: -interval)")
 	fs.Var(&cfg.services, "service", "service as name=path/to/metrics.yaml; repeatable")
 	fs.StringVar(&cfg.listen, "listen", ":8080", "HTTP listen address")
