@@ -54,7 +54,7 @@ func addCommonFlags(fs *flag.FlagSet, c *common, timeout time.Duration, timeoutU
 	fs.StringVar(&c.prom, "prom", "", "Prometheus base URL, e.g. http://prometheus:9090 (required when a metric uses source prometheus)")
 	fs.StringVar(&c.ollama, "ollama", ollama.DefaultBaseURL, "Ollama base URL")
 	fs.StringVar(&c.model, "model", decision.DefaultModel, "Ollama model")
-	fs.StringVar(&c.rubricPath, "rubric", "", "rubric JSON file (default: built-in)")
+	fs.StringVar(&c.rubricPath, "rubric", "", "rubric JSON file (default: rubric.json built into the binary)")
 	fs.BoolVar(&c.debias, "debias", true, "ask in forward and reversed option order")
 	fs.DurationVar(&c.timeout, "timeout", timeout, timeoutUsage)
 }

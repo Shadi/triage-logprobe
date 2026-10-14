@@ -2,6 +2,7 @@ FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.1 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY rubric.go rubric.json ./
 COPY cmd ./cmd
 COPY internal ./internal
 ARG TARGETOS TARGETARCH

@@ -37,6 +37,10 @@ Output:
 HEALTHY  sev1 0.04 | sev2 0.02 | sev3 0.04 | healthy 0.90   confidence 0.69  margin 0.86  option_mass 1.00
 ```
 
+### Rubric
+
+[rubric.json](rubric.json) holds the system prompt, the question and the four severity options.
+
 ### Metrics file
 
 A YAML file that lists sources, and under each source its metrics. Each metric has a `name`, a `query` in the language of its source, and an optional `target`. Names ending in `_ratio` are shown as percentages. See `echo.yaml`.
@@ -79,7 +83,7 @@ Only the sources used in the metric files need configuring.
 | `-metrics-file`         | (required)                              | YAML file with the metrics to evaluate                 |
 | `-at`                   | now                                     | Evaluate a past moment (RFC3339)                       |
 | `-model` / `-ollama`    | `qwen3.5:4b` / `http://localhost:11434` | Model and Ollama address                               |
-| `-rubric`               | built-in                                | JSON file with the system prompt, question and options |
+| `-rubric`               | `rubric.json`, built in                 | JSON file with the system prompt, question and options |
 | `-debias`               | `true`                                  | Ask in both option orders                              |
 | `-show-state` / `-json` |                                         | Print the model input / full JSON result               |
 
@@ -109,6 +113,7 @@ Each `-service name=FILE` points to a metrics file in the format above. Services
 | ------------------------- | ---------------------------------------------------------------- |
 | `GET /v1/services`        | Last state of every service                                      |
 | `GET /v1/services/{name}` | Last state of one service. Add `?verbose=1` for the raw readings |
+| `GET /status`             | HTML page listing every service, its severity and status         |
 | `GET /healthz`            | Process is up                                                    |
 | `GET /readyz`             | 200 once every service has succeeded at least once               |
 
@@ -149,6 +154,10 @@ curl localhost:8080/v1/services/echo
 - `error`: no check has succeeded yet.
 
 A failed check keeps the previous result and sets `last_error` and `last_error_at`.
+
+### Status page
+
+`GET /status` is a plain HTML page with one row per service.
 
 ## Tests
 

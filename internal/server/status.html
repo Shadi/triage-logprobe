@@ -1,0 +1,42 @@
+{{define "page"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>triage-logprobe status</title>
+<style>
+:root { color-scheme: light dark; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7; --bg: #fff; --sev1: #c62828; --sev2: #e65100; --sev3: #a07800; --ok: #2e7d32; }
+@media (prefers-color-scheme: dark) { :root { --fg: #f5f5f7; --muted: #a1a1a6; --line: #3a3a3c; --bg: #161617; --sev1: #ff6b6b; --sev2: #ffa04d; --sev3: #e6c34d; --ok: #6bcf7f; } }
+body { margin: 0 auto; max-width: 1100px; padding: 24px 16px; font: 14px/1.45 system-ui, -apple-system, sans-serif; color: var(--fg); background: var(--bg); }
+h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+p.sub { margin: 0 0 20px; color: var(--muted); }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+.sev { font-weight: 600; }
+.sev-SEV1 { color: var(--sev1); } .sev-SEV2 { color: var(--sev2); } .sev-SEV3 { color: var(--sev3); } .sev-HEALTHY { color: var(--ok); }
+.st-error, .st-stale { color: var(--sev1); } .st-pending { color: var(--muted); }
+.muted { color: var(--muted); }
+.err { color: var(--sev1); font-size: 12px; }
+td, .err { overflow-wrap: anywhere; }
+@media (max-width: 640px) { th.hide, td.hide { display: none; } }
+</style>
+</head>
+<body>
+<h1>triage-logprobe</h1>
+<p class="sub">Services: {{len .}}. Reload the page for the latest results.</p>
+<table>
+<thead><tr><th>Service</th><th>Status</th><th class="hide">Checked</th></tr></thead>
+<tbody>
+{{range .}}<tr>
+<td>{{.Service}}</td>
+<td>{{if eq .Status "ok"}}<span class="sev sev-{{.Severity}}">{{.Severity}}</span>{{else}}<span class="sev st-{{.Status}}">{{.Status}}</span>{{if .HasResult}} <span class="muted">last {{.Severity}}</span>{{end}}{{end}}{{if .Error}}<div class="err">{{.Error}}</div>{{end}}</td>
+<td class="hide muted">{{.Checked}}</td>
+</tr>
+{{end}}
+</tbody>
+</table>
+</body>
+</html>
+{{end}}
+

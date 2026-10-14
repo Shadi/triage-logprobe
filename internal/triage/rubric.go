@@ -2,16 +2,13 @@ package triage
 
 import (
 	"bytes"
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
 
+	triagelogprobe "github.com/shadi/triage-logprobe"
 	"github.com/shadi/triage-logprobe/internal/decision"
 )
-
-//go:embed rubric_default.json
-var defaultRubric []byte
 
 type Rubric struct {
 	System   string            `json:"system"`
@@ -20,7 +17,7 @@ type Rubric struct {
 }
 
 func DefaultRubric() (Rubric, error) {
-	return parseRubric(defaultRubric)
+	return parseRubric([]byte(triagelogprobe.Rubric))
 }
 
 func LoadRubric(path string) (Rubric, error) {

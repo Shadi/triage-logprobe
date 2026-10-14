@@ -28,6 +28,7 @@ func Handler(s *Store) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, st)
 	})
+	mux.HandleFunc("GET /status", serveStatus(s))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})

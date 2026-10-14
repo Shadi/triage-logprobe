@@ -243,3 +243,25 @@ func TestHandler_Stale(t *testing.T) {
 		t.Errorf("echo = %d %v, want stale", w.Code, b)
 	}
 }
+
+func TestStatusRows(t *testing.T) {
+	store := NewStore([]string{"echo", "cart"}, time.Hour)
+	now := t0
+	store.now = func() time.Time { return now }
+	res := result("sev2")
+	res.Severity = "SEV2"
+	res.Answer.Probs = map[string]float64{"healthy": 0.1, "sev2": 0.6, "sev3": 0.3}
+	store.Record("echo", res, nil)
+	now = t0.Add(90 * time.Second)
+	store.Record("echo", triage.Result{}, errors.New("ollama down"))
+	now = t0.Add(2 * time.Minute)
+
+	rows := statusRows(store.All(), now)
+	echo, cart := rows[0], rows[1]
+	if !echo.HasResult || echo.Severity != "SEV2" || echo.Error != "ollama down" || echo.Checked != "30s ago" {
+		t.Errorf("echo = %+v", echo)
+	}
+	if cart.HasResult || cart.Status != StatusPending || cart.Checked != "never" {
+		t.Errorf("cart = %+v", cart)
+	}
+}
