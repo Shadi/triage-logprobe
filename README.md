@@ -2,9 +2,9 @@
 
 Jev-style prototype of a triage decision service that reads metrics listed in [echo.yaml](echo.yaml) from Prometheus or Datadog and use a self-hosted small qwen model to classify the severity.
 
-Incident triage from Prometheus and Datadog metrics. It classifies a service as **SEV1 / SEV2 / SEV3 / HEALTHY** with a probability for each, using a small local Qwen model as a Jev-style decision model.
+It classifies a service as **SEV1 / SEV2 / SEV3 / HEALTHY** with a probability for each.
 
-This is a PoC CLI, I might add later a webhook functionality so something like alertmanager or another service can contact the service directly using API calls.
+![Status page](status-page.png)
 
 ## Requirements
 
