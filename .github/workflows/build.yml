@@ -94,6 +94,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
+          pattern: triage-logprobs-*
           merge-multiple: true
       - name: Checksums
         run: cd dist && sha256sum triage-logprobs-* > SHA256SUMS
