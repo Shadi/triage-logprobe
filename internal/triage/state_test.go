@@ -17,9 +17,9 @@ func TestRenderState(t *testing.T) {
 		{Metric: Metric{Name: "missing"}},
 	}
 	want := stateIntro + `
-error_5xx_ratio: 33.4% (normal 0.1%, 334× normal)
+error_5xx_ratio: 33.4% (normal 0.1%, 334× normal, unusually high)
 latency_p99_ms{pod="c"}: no data now (normal 90)
-latency_p99_ms{pod="a"}: 2100 (normal 95.5, 22× normal)
+latency_p99_ms{pod="a"}: 2100 (normal 95.5, 22× normal, unusually high)
 latency_p99_ms{pod="b"}: 96 (new, no data before)
 restarts: 0 (normal 0)
 missing: no data now, no data before`
@@ -57,7 +57,7 @@ func TestRenderState_AnomalousSeriesSurviveCap(t *testing.T) {
 	}
 	ss = append(ss, SeriesReading{Labels: map[string]string{"pod": "z"}, Now: 50, Baseline: 1, HasNow: true, HasBaseline: true})
 	got := RenderState([]Reading{{Metric: Metric{Name: "m"}, Series: ss}})
-	if !strings.Contains(got, `m{pod="z"}: 50 (normal 1, 50× normal)`) {
+	if !strings.Contains(got, `m{pod="z"}: 50 (normal 1, 50× normal, unusually high)`) {
 		t.Errorf("the deviating series must not be hidden by the cap:\n%s", got)
 	}
 }
@@ -89,8 +89,13 @@ func TestDescribe_RatioEdges(t *testing.T) {
 	}{
 		{SeriesReading{Now: 0, Baseline: 12, HasNow: true, HasBaseline: true}, "0 (normal 12, dropped to zero)"},
 		{SeriesReading{Now: 0.5, Baseline: 1e-9, HasNow: true, HasBaseline: true}, "0.5 (normal 0.000000001)"},
-		{SeriesReading{Now: 5000, Baseline: 1, HasNow: true, HasBaseline: true}, "5000 (normal 1, more than 1000× normal)"},
+		{SeriesReading{Now: 5000, Baseline: 1, HasNow: true, HasBaseline: true}, "5000 (normal 1, more than 1000× normal, unusually high)"},
 		{SeriesReading{Now: -3, Baseline: 5, HasNow: true, HasBaseline: true}, "-3 (normal 5)"},
+		{SeriesReading{Now: 3, Baseline: 1, HasNow: true, HasBaseline: true}, "3 (normal 1, within usual range)"},
+		{SeriesReading{Now: 3.002, Baseline: 1, HasNow: true, HasBaseline: true}, "3 (normal 1, within usual range)"},
+		{SeriesReading{Now: 3.1, Baseline: 1, HasNow: true, HasBaseline: true}, "3.1 (normal 1, 3.1× normal, unusually high)"},
+		{SeriesReading{Now: 0.2, Baseline: 1, HasNow: true, HasBaseline: true}, "0.2 (normal 1, 0.2× normal, unusually low)"},
+		{SeriesReading{Now: 1, Baseline: 3, HasNow: true, HasBaseline: true}, "1 (normal 3, within usual range)"},
 		{SeriesReading{Now: 3, Baseline: -5, HasNow: true, HasBaseline: true}, "3 (normal -5)"},
 	}
 	ratioCases := []struct {
@@ -98,13 +103,13 @@ func TestDescribe_RatioEdges(t *testing.T) {
 		want string
 	}{
 		{SeriesReading{Now: 0, Baseline: 0.209, HasNow: true, HasBaseline: true}, "0% (normal 20.9%, dropped to zero)"},
-		{SeriesReading{Now: 0.3, Baseline: 0.01, HasNow: true, HasBaseline: true}, "30% (normal 1%, 30× normal)"},
+		{SeriesReading{Now: 0.3, Baseline: 0.01, HasNow: true, HasBaseline: true}, "30% (normal 1%, 30× normal, unusually high)"},
 		{SeriesReading{Now: 0.3, Baseline: 0, HasNow: true, HasBaseline: true}, "30% (normal 0%)"},
 		{SeriesReading{Now: 0.5, HasNow: true}, "50% (new, no data before)"},
 		{SeriesReading{Baseline: 0.02, HasBaseline: true}, "no data now (normal 2%)"},
 		{SeriesReading{Now: 0.999, Baseline: 0.0000001, HasNow: true, HasBaseline: true}, "99.9% (normal 0.00001%)"},
 		{SeriesReading{Now: 0.5, Baseline: 1e-9, HasNow: true, HasBaseline: true}, "50% (normal 0.0000001%)"},
-		{SeriesReading{Now: 0.9, Baseline: 0.0001, HasNow: true, HasBaseline: true}, "90% (normal 0.01%, more than 1000× normal)"},
+		{SeriesReading{Now: 0.9, Baseline: 0.0001, HasNow: true, HasBaseline: true}, "90% (normal 0.01%, more than 1000× normal, unusually high)"},
 	}
 	for _, rc := range ratioCases {
 		if got := describe(Metric{Name: "error_ratio"}, rc.s); got != rc.want {
@@ -127,11 +132,16 @@ func TestDescribe_Targets(t *testing.T) {
 		s    SeriesReading
 		want string
 	}{
-		{"error_ratio", Target{Max: f64(0.01)}, SeriesReading{Now: 0.3, HasNow: true}, "30% (target at most 1%, above target, 30× the limit)"},
+		{"error_ratio", Target{Max: f64(0.01)}, SeriesReading{Now: 0.3, HasNow: true}, "30% (target at most 1%, above target)"},
 		{"error_ratio", Target{Max: f64(0.01)}, SeriesReading{Now: 0.015, HasNow: true}, "1.5% (target at most 1%, above target)"},
 		{"error_ratio", Target{Max: f64(0.01)}, SeriesReading{Now: 0.002, HasNow: true}, "0.2% (target at most 1%, within target)"},
-		{"error_ratio", Target{Max: f64(0.0001)}, SeriesReading{Now: 0.9, HasNow: true}, "90% (target at most 0.01%, above target, more than 1000× the limit)"},
+		{"error_ratio", Target{Max: f64(0.0001)}, SeriesReading{Now: 0.9, HasNow: true}, "90% (target at most 0.01%, above target)"},
 		{"restarts", Target{Max: f64(0)}, SeriesReading{Now: 2, HasNow: true}, "2 (target at most 0, above target)"},
+		{"p99_ms", Target{Max: f64(500)}, SeriesReading{Now: 670, HasNow: true}, "670 (target at most 500, slightly above target, 1.34× the limit)"},
+		{"p99_ms", Target{Max: f64(500)}, SeriesReading{Now: 1000, HasNow: true}, "1000 (target at most 500, well above target, 2× the limit)"},
+		{"p99_ms", Target{Max: f64(500)}, SeriesReading{Now: 999, HasNow: true}, "999 (target at most 500, well above target, 2× the limit)"},
+		{"p99_ms", Target{Max: f64(500)}, SeriesReading{Now: 2500, HasNow: true}, "2500 (target at most 500, far above target, 5× the limit)"},
+		{"p99_ms", Target{Max: f64(0.001)}, SeriesReading{Now: 5, HasNow: true}, "5 (target at most 0.001, far above target, more than 1000× the limit)"},
 		{"replicas", Target{Min: f64(3)}, SeriesReading{Now: 1, HasNow: true}, "1 (target at least 3, below target)"},
 		{"replicas", Target{Min: f64(2), Max: f64(5)}, SeriesReading{Now: 4, HasNow: true}, "4 (target 2 to 5, within target)"},
 		{"replicas", Target{Min: f64(3)}, SeriesReading{}, "no data now (target at least 3)"},
@@ -145,13 +155,13 @@ func TestDescribe_Targets(t *testing.T) {
 
 func TestDescribe_PartialHistory(t *testing.T) {
 	m := Metric{Name: "rps"}
-	if got := describe(m, SeriesReading{Now: 20, Baseline: 10, HasNow: true, HasBaseline: true, Days: 2}); got != "20 (normal 10, 2× normal, from 2 of 7 days)" {
+	if got := describe(m, SeriesReading{Now: 20, Baseline: 10, HasNow: true, HasBaseline: true, Days: 2}); got != "20 (normal 10, within usual range, from 2 of 7 days)" {
 		t.Errorf("got %q", got)
 	}
 	if got := describe(m, SeriesReading{Baseline: 10, HasBaseline: true, Days: 1}); got != "no data now (normal 10, from 1 of 7 days)" {
 		t.Errorf("got %q", got)
 	}
-	if got := describe(m, SeriesReading{Now: 10, Baseline: 10, HasNow: true, HasBaseline: true, Days: 7}); got != "10 (normal 10, 1× normal)" {
+	if got := describe(m, SeriesReading{Now: 10, Baseline: 10, HasNow: true, HasBaseline: true, Days: 7}); got != "10 (normal 10, within usual range)" {
 		t.Errorf("full history must not be annotated: %q", got)
 	}
 }

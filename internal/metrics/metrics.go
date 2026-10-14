@@ -19,3 +19,5 @@ type Source interface {
 	Query(ctx context.Context, q string, at time.Time) ([]Series, error)
 	QueryRange(ctx context.Context, q string, start, end time.Time, step time.Duration) ([]Series, error)
 }
+
+type Sources map[string]Source

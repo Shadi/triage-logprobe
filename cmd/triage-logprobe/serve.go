@@ -51,7 +51,8 @@ type serveConfig struct {
 }
 
 func serveMain(args []string) int {
-	cfg, err := parseServeFlags(args)
+	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	cfg, err := parseServeFlags(args, func(q, w string) { log.Warn("prometheus warning", "warning", w, "query", q) })
 	if errors.Is(err, flag.ErrHelp) {
 		return 0
 	}
@@ -59,7 +60,6 @@ func serveMain(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	log := slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	if err := serve(cfg, log); err != nil {
 		log.Error("serve", "err", err)
 		return 1
@@ -67,11 +67,11 @@ func serveMain(args []string) int {
 	return 0
 }
 
-func parseServeFlags(args []string) (serveConfig, error) {
+func parseServeFlags(args []string, warn warnFunc) (serveConfig, error) {
 	var cfg serveConfig
 	fs := flag.NewFlagSet("triage-logprobe serve", flag.ContinueOnError)
 	addCommonFlags(fs, &cfg.common, 0, "timeout per check (default: -interval)")
-	fs.Var(&cfg.services, "service", "service as name=path/to/metrics.txt; repeatable")
+	fs.Var(&cfg.services, "service", "service as name=path/to/metrics.yaml; repeatable")
 	fs.StringVar(&cfg.listen, "listen", ":8080", "HTTP listen address")
 	fs.DurationVar(&cfg.interval, "interval", 60*time.Second, "how often every service is checked")
 	if err := fs.Parse(args); err != nil {
@@ -98,14 +98,21 @@ func parseServeFlags(args []string) (serveConfig, error) {
 	if cfg.timeout > cfg.interval {
 		return cfg, fmt.Errorf("-timeout must not exceed -interval")
 	}
-	if err := cfg.validate(); err != nil {
+	var all []triage.Metric
+	for _, svc := range cfg.services {
+		if err := triage.RequireTargets(svc.Metrics); err != nil {
+			return cfg, fmt.Errorf("service %q: %w; serve mode requires a target on every metric", svc.Name, err)
+		}
+		all = append(all, svc.Metrics...)
+	}
+	if err := cfg.validate(all, warn); err != nil {
 		return cfg, err
 	}
 	return cfg, nil
 }
 
 func serve(cfg serveConfig, log *slog.Logger) error {
-	prom, engine, err := cfg.clients(func(q, w string) { log.Warn("prometheus warning", "warning", w, "query", q) })
+	engine, err := cfg.engine()
 	if err != nil {
 		return err
 	}
@@ -122,7 +129,7 @@ func serve(cfg serveConfig, log *slog.Logger) error {
 		Timeout:  cfg.timeout,
 		Log:      log,
 		Check: func(ctx context.Context, svc triage.Service, at time.Time) (triage.Result, error) {
-			return triage.Check(ctx, prom, engine, cfg.rubric, svc.Metrics, triage.Params{At: at})
+			return triage.Check(ctx, cfg.sources, engine, cfg.rubric, svc.Metrics, triage.Params{At: at})
 		},
 	}
 

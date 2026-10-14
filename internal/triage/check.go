@@ -22,9 +22,9 @@ type Result struct {
 	LatencyMS map[string]int64 `json:"latency_ms"`
 }
 
-func Check(ctx context.Context, src metrics.Source, e *decision.Engine, r Rubric, ms []Metric, p Params) (Result, error) {
+func Check(ctx context.Context, srcs metrics.Sources, e *decision.Engine, r Rubric, ms []Metric, p Params) (Result, error) {
 	t0 := time.Now()
-	readings, err := Collect(ctx, src, ms, p.At)
+	readings, err := Collect(ctx, srcs, ms, p.At)
 	if err != nil {
 		return Result{}, err
 	}

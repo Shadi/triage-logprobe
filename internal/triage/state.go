@@ -62,14 +62,24 @@ func describeNormal(name string, s SeriesReading) string {
 	case s.Now == 0 && s.Baseline > 0:
 		return fmt.Sprintf("%s (normal %s, dropped to zero)", f(0), f(s.Baseline))
 	case s.Now > 0 && s.Baseline >= minRatioBaseline:
-		ratio := s.Now / s.Baseline
-		if ratio > maxRatio {
-			return fmt.Sprintf("%s (normal %s, more than %d× normal)", f(s.Now), f(s.Baseline), maxRatio)
+		ratio := rounded(s.Now / s.Baseline)
+		switch {
+		case ratio > maxRatio:
+			return fmt.Sprintf("%s (normal %s, more than %d× normal, unusually high)", f(s.Now), f(s.Baseline), maxRatio)
+		case ratio > 3:
+			return fmt.Sprintf("%s (normal %s, %s× normal, unusually high)", f(s.Now), f(s.Baseline), num(ratio))
+		case ratio < rounded(1.0/3):
+			return fmt.Sprintf("%s (normal %s, %s× normal, unusually low)", f(s.Now), f(s.Baseline), num(ratio))
 		}
-		return fmt.Sprintf("%s (normal %s, %s× normal)", f(s.Now), f(s.Baseline), num(ratio))
+		return fmt.Sprintf("%s (normal %s, within usual range)", f(s.Now), f(s.Baseline))
 	default:
 		return fmt.Sprintf("%s (normal %s)", f(s.Now), f(s.Baseline))
 	}
+}
+
+func rounded(v float64) float64 {
+	r, _ := strconv.ParseFloat(num(v), 64)
+	return r
 }
 
 func format(name string, v float64) string {
@@ -108,11 +118,17 @@ func describeTarget(name string, t Target, s SeriesReading) string {
 	case !s.HasNow:
 		return fmt.Sprintf("no data now (%s)", target)
 	case t.Max != nil && s.Now > *t.Max:
-		switch r := s.Now / *t.Max; {
+		switch r := rounded(s.Now / *t.Max); {
+		case strings.HasSuffix(name, "_ratio"):
+			return fmt.Sprintf("%s (%s, above target)", f(s.Now), target)
 		case *t.Max > 0 && r > maxRatio:
-			return fmt.Sprintf("%s (%s, above target, more than %d× the limit)", f(s.Now), target, maxRatio)
+			return fmt.Sprintf("%s (%s, far above target, more than %d× the limit)", f(s.Now), target, maxRatio)
+		case *t.Max > 0 && r >= 5:
+			return fmt.Sprintf("%s (%s, far above target, %s× the limit)", f(s.Now), target, num(r))
 		case *t.Max > 0 && r >= 2:
-			return fmt.Sprintf("%s (%s, above target, %s× the limit)", f(s.Now), target, num(r))
+			return fmt.Sprintf("%s (%s, well above target, %s× the limit)", f(s.Now), target, num(r))
+		case *t.Max > 0:
+			return fmt.Sprintf("%s (%s, slightly above target, %s× the limit)", f(s.Now), target, num(r))
 		}
 		return fmt.Sprintf("%s (%s, above target)", f(s.Now), target)
 	case t.Min != nil && s.Now < *t.Min:

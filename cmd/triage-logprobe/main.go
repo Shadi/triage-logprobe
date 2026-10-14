@@ -13,29 +13,10 @@ import (
 	"github.com/shadi/triage-logprobe/internal/triage"
 )
 
-type metricFlags []triage.Metric
-
-func (m *metricFlags) String() string {
-	names := make([]string, len(*m))
-	for i, x := range *m {
-		names[i] = x.Name
-	}
-	return strings.Join(names, ",")
-}
-
-func (m *metricFlags) Set(v string) error {
-	x, err := triage.ParseMetric(v)
-	if err != nil {
-		return err
-	}
-	*m = append(*m, x)
-	return nil
-}
-
 type config struct {
 	common
 	metricsFile       string
-	metrics           metricFlags
+	metrics           []triage.Metric
 	at                time.Time
 	asJSON, showState bool
 }
@@ -69,8 +50,7 @@ func parseFlags(args []string) (config, error) {
 	var at string
 	fs := flag.NewFlagSet("triage-logprobe", flag.ContinueOnError)
 	addCommonFlags(fs, &cfg.common, 2*time.Minute, "overall timeout")
-	fs.Var(&cfg.metrics, "metric", "metric as name=PROMQL; repeatable")
-	fs.StringVar(&cfg.metricsFile, "metrics-file", "", "file with one name=PROMQL per line (# comments allowed)")
+	fs.StringVar(&cfg.metricsFile, "metrics-file", "", "YAML file with the metrics to evaluate (required)")
 	fs.StringVar(&at, "at", "", "evaluation time, RFC3339 (default now)")
 	fs.BoolVar(&cfg.asJSON, "json", false, "print JSON")
 	fs.BoolVar(&cfg.showState, "show-state", false, "print the state sent to the model")
@@ -87,24 +67,14 @@ func parseFlags(args []string) (config, error) {
 	if fs.NArg() > 0 {
 		return cfg, fmt.Errorf("unexpected arguments %q", fs.Args())
 	}
-	if cfg.metricsFile != "" {
-		f, err := os.Open(cfg.metricsFile)
-		if err != nil {
-			return cfg, err
-		}
-		defer f.Close()
-		ms, err := triage.ParseMetrics(f)
-		if err != nil {
-			return cfg, fmt.Errorf("%s: %w", cfg.metricsFile, err)
-		}
-		cfg.metrics = append(ms, cfg.metrics...)
+	if cfg.metricsFile == "" {
+		return cfg, fmt.Errorf("-metrics-file is required")
 	}
-	if len(cfg.metrics) == 0 {
-		return cfg, fmt.Errorf("at least one -metric or -metrics-file is required")
-	}
-	if err := triage.CheckUnique(cfg.metrics); err != nil {
+	ms, err := triage.LoadMetrics(cfg.metricsFile)
+	if err != nil {
 		return cfg, err
 	}
+	cfg.metrics = ms
 	cfg.at = time.Now()
 	if at != "" {
 		t, err := time.Parse(time.RFC3339, at)
@@ -113,20 +83,24 @@ func parseFlags(args []string) (config, error) {
 		}
 		cfg.at = t
 	}
-	if err := cfg.validate(); err != nil {
+	if err := cfg.validate(cfg.metrics, stderrWarn); err != nil {
 		return cfg, err
 	}
 	return cfg, nil
 }
 
+func stderrWarn(q, w string) {
+	fmt.Fprintf(os.Stderr, "prometheus warning: %s (%s)\n", w, q)
+}
+
 func run(cfg config) error {
-	prom, engine, err := cfg.clients(func(q, w string) { fmt.Fprintf(os.Stderr, "prometheus warning: %s (%s)\n", w, q) })
+	engine, err := cfg.engine()
 	if err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.timeout)
 	defer cancel()
-	res, err := triage.Check(ctx, prom, engine, cfg.rubric, cfg.metrics, triage.Params{At: cfg.at})
+	res, err := triage.Check(ctx, cfg.sources, engine, cfg.rubric, cfg.metrics, triage.Params{At: cfg.at})
 	if err != nil {
 		return err
 	}

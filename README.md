@@ -1,8 +1,8 @@
 # triage-logprobe
 
-Jev-style prototype of a triage decision service that reads metrics listed in [echo.txt](echo.txt) from prometheus and use a self-hosted small qwen model to classify the severity.
+Jev-style prototype of a triage decision service that reads metrics listed in [echo.yaml](echo.yaml) from Prometheus or Datadog and use a self-hosted small qwen model to classify the severity.
 
-Incident triage from Prometheus metrics. It classifies a service as **SEV1 / SEV2 / SEV3 / HEALTHY** with a probability for each, using a small local Qwen model as a Jev-style decision model.
+Incident triage from Prometheus and Datadog metrics. It classifies a service as **SEV1 / SEV2 / SEV3 / HEALTHY** with a probability for each, using a small local Qwen model as a Jev-style decision model.
 
 This is a PoC CLI, I might add later a webhook functionality so something like alertmanager or another service can contact the service directly using API calls.
 
@@ -11,7 +11,6 @@ This is a PoC CLI, I might add later a webhook functionality so something like a
 - Go 1.27+
 - [Ollama](https://ollama.com) with logprobs support (0.35+)
 - The model `qwen3.5:4b` (about 3.4 GB, fits on an 8 GB+ GPU)
-- A reachable Prometheus HTTP API
 
 ## Start the model
 
@@ -28,7 +27,7 @@ Ollama listens on `http://localhost:11434` by default. Use `-ollama` for another
 ```sh
 go run ./cmd/triage-logprobe \
   -prom http://prometheus:9090 \
-  -metrics-file echo.txt \
+  -metrics-file echo.yaml \
   -show-state
 ```
 
@@ -40,29 +39,49 @@ HEALTHY  sev1 0.04 | sev2 0.02 | sev3 0.04 | healthy 0.90   confidence 0.69  mar
 
 ### Metrics file
 
-One metric per line, `name=PROMQL` or `name[target]=PROMQL`. Lines starting with `#` are comments. Names ending in `_ratio` are shown as percentages. See `echo.txt`.
+A YAML file that lists sources, and under each source its metrics. Each metric has a `name`, a `query` in the language of its source, and an optional `target`. Names ending in `_ratio` are shown as percentages. See `echo.yaml`.
+
+```yaml
+sources:
+  - source: prometheus
+    metrics:
+      - name: latency_p50_ms
+        query: histogram_quantile(0.50, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_service_name="checkout"}[2m])))
+      - name: error_5xx_ratio
+        query: (sum(rate(istio_requests_total{destination_service_name="checkout",response_code=~"5.."}[2m])) or vector(0)) / sum(rate(istio_requests_total{destination_service_name="checkout"}[2m]))
+        target: { max: 0.01 }
+  - source: datadog
+    metrics:
+      - name: apm_p99_seconds
+        query: p99:trace.http.request{service:checkout}
+        target: { max: 0.5 }
+```
 
 Each metric is compared to a reference that the model sees next to the current value:
 
-- **Target** (`[max=N]`, `[min=N]` or `[min=N,max=N]`): a fixed bound. The state says whether the value is within or outside it, e.g. `30% (target at most 1%, above target, 30× the limit)`. Use targets for anything with a natural bound or a normal of about zero: error ratios, p99 latency SLOs, availability ratios, restarts, saturation.
-- **No target**: the median at the same time of day over the previous 7 days (±30 min each day). If fewer than 7 days have data, the state says so (`from 2 of 7 days`).
+- **Target** (`{max: N}`, `{min: N}` or `{min: N, max: N}`): a fixed bound. The state says whether the value is within or outside it. Above a maximum it also says by how much: `1.34 (target at most 1, slightly above target, 1.34× the limit)`, with `well above` from 2× and `far above` from 5×. Ratios only say `above target`, so the model judges them by their percentage. Use targets for anything with a natural bound or a normal of about zero: error ratios, p99 latency SLOs, availability ratios, restarts, saturation.
+- **No target**: the median at the same time of day over the previous 7 days (±30 min each day). Values between a third and 3 times normal read `within usual range`; outside it the state gives the multiple and `unusually high` or `unusually low`. If fewer than 7 days have data, the state says so (`from 2 of 7 days`). Days are local days of the process, so set `TZ` in containers.
 
-```
-request_rate_rps=sum(rate(istio_requests_total{destination_service_name="checkout"}[2m]))
-error_5xx_ratio[max=0.01]=(sum(rate(istio_requests_total{destination_service_name="checkout",response_code=~"5.."}[2m])) or vector(0)) / sum(rate(istio_requests_total{destination_service_name="checkout"}[2m]))
-```
+### Sources
+
+| Source       | Configuration                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------ |
+| `prometheus` | `-prom URL`                                                                                      |
+| `datadog`    | `DD_API_KEY`, `DD_APP_KEY` and optionally `DD_SITE` (default `datadoghq.com`) in the environment |
+
+Only the sources used in the metric files need configuring.
 
 ### Flags
 
-| Flag                                    | Default                                 |                                                        |
-| --------------------------------------- | --------------------------------------- | ------------------------------------------------------ |
-| `-prom`                                 | (required)                              | Prometheus base URL                                    |
-| `-metrics-file` / `-metric name=PROMQL` |                                         | Metrics to evaluate. `-metric` can be repeated         |
-| `-at`                                   | now                                     | Evaluate a past moment (RFC3339)                       |
-| `-model` / `-ollama`                    | `qwen3.5:4b` / `http://localhost:11434` | Model and Ollama address                               |
-| `-rubric`                               | built-in                                | JSON file with the system prompt, question and options |
-| `-debias`                               | `true`                                  | Ask in both option orders                              |
-| `-show-state` / `-json`                 |                                         | Print the model input / full JSON result               |
+| Flag                    | Default                                 |                                                        |
+| ----------------------- | --------------------------------------- | ------------------------------------------------------ |
+| `-prom`                 |                                         | Prometheus base URL                                    |
+| `-metrics-file`         | (required)                              | YAML file with the metrics to evaluate                 |
+| `-at`                   | now                                     | Evaluate a past moment (RFC3339)                       |
+| `-model` / `-ollama`    | `qwen3.5:4b` / `http://localhost:11434` | Model and Ollama address                               |
+| `-rubric`               | built-in                                | JSON file with the system prompt, question and options |
+| `-debias`               | `true`                                  | Ask in both option orders                              |
+| `-show-state` / `-json` |                                         | Print the model input / full JSON result               |
 
 ## Serve mode
 
@@ -71,11 +90,11 @@ Runs continuously and checks every service on an interval. The last result for e
 ```sh
 go run ./cmd/triage-logprobe serve \
   -prom http://prometheus:9090 \
-  -service echo=echo.txt \
-  -service checkout=checkout.txt
+  -service echo=echo.yaml \
+  -service checkout=checkout.yaml
 ```
 
-Each `-service name=FILE` points to a metrics file in the format above. Services are checked one after another.
+Each `-service name=FILE` points to a metrics file in the format above. Services are checked one after another. Every metric needs a `target` in serve mode; the 7-day reference is only available in the CLI, where a check runs once.
 
 | Flag        | Default     |                                                |
 | ----------- | ----------- | ---------------------------------------------- |
@@ -114,7 +133,7 @@ curl localhost:8080/v1/services/echo
       "confidence": 0.75,
       "...": "..."
     },
-    "state": "request_rate_rps: 9.99 (normal 10, 1× normal)\n...",
+    "state": "error_5xx_ratio: 0% (target at most 1%, within target)\n...",
     "at": "2026-10-12T15:12:15Z"
   },
   "last_ok_at": "2026-10-12T15:12:15Z",

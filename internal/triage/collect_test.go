@@ -62,7 +62,7 @@ func TestCollect_SameSlotLast7Days(t *testing.T) {
 		now:    map[string][]metrics.Series{"q": {series(map[string]string{"__name__": "x", "pod": "a"}, 9)}},
 		before: map[string][]metrics.Series{"q": {series(map[string]string{"__name__": "x", "pod": "a"}, 1, 2, math.NaN(), 9)}},
 	}
-	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at)
+	rs, err := Collect(context.Background(), metrics.Sources{"": src}, []Metric{{Name: "m", Query: "q"}}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestCollect_SameSlotLast7Days(t *testing.T) {
 func TestCollect_TargetSkipsBaseline(t *testing.T) {
 	src := &fakeSource{now: map[string][]metrics.Series{"q": {series(nil, 0.3)}}}
 	max := 0.01
-	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q", Target: &Target{Max: &max}}}, at)
+	rs, err := Collect(context.Background(), metrics.Sources{"": src}, []Metric{{Name: "m", Query: "q", Target: &Target{Max: &max}}}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestCollect_CountsDaysWithData(t *testing.T) {
 			slot(3): {series(a, math.NaN())},
 		},
 	}
-	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at)
+	rs, err := Collect(context.Background(), metrics.Sources{"": src}, []Metric{{Name: "m", Query: "q"}}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestCollect_UnionAndNoData(t *testing.T) {
 		}},
 		before: map[string][]metrics.Series{"q": {series(map[string]string{"pod": "gone"}, 4, 4)}},
 	}
-	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}, {Name: "empty", Query: "e"}}, at)
+	rs, err := Collect(context.Background(), metrics.Sources{"": src}, []Metric{{Name: "m", Query: "q"}, {Name: "empty", Query: "e"}}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestCollect_UnionAndNoData(t *testing.T) {
 
 func TestCollect_Errors(t *testing.T) {
 	src := &fakeSource{err: errors.New("down")}
-	_, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at)
+	_, err := Collect(context.Background(), metrics.Sources{"": src}, []Metric{{Name: "m", Query: "q"}}, at)
 	if err == nil || !strings.Contains(err.Error(), `"m"`) {
 		t.Errorf("err = %v, want it to name the metric", err)
 	}
@@ -176,7 +176,7 @@ func TestCollect_KeepsSeriesThatDifferOnlyByName(t *testing.T) {
 		series(map[string]string{"__name__": "a", "pod": "x"}, 1),
 		series(map[string]string{"__name__": "b", "pod": "x"}, 2),
 	}}}
-	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at)
+	rs, err := Collect(context.Background(), metrics.Sources{"": src}, []Metric{{Name: "m", Query: "q"}}, at)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +230,7 @@ func TestCollect_FailedDaysDegrade(t *testing.T) {
 	for d := 2; d <= 7; d++ {
 		src.dayErr[slot(d)] = errors.New("timeout")
 	}
-	rs, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at)
+	rs, err := Collect(context.Background(), metrics.Sources{"": src}, []Metric{{Name: "m", Query: "q"}}, at)
 	if err != nil {
 		t.Fatalf("one good day must be enough: %v", err)
 	}
@@ -238,7 +238,28 @@ func TestCollect_FailedDaysDegrade(t *testing.T) {
 		t.Errorf("series = %+v, want 1 day, baseline 4", s)
 	}
 	src.dayErr[slot(1)] = errors.New("timeout")
-	if _, err := Collect(context.Background(), src, []Metric{{Name: "m", Query: "q"}}, at); err == nil || !strings.Contains(err.Error(), "baseline") {
+	if _, err := Collect(context.Background(), metrics.Sources{"": src}, []Metric{{Name: "m", Query: "q"}}, at); err == nil || !strings.Contains(err.Error(), "baseline") {
 		t.Errorf("all days failed: err = %v, want a baseline error", err)
+	}
+}
+
+func TestCollect_DispatchesBySource(t *testing.T) {
+	prom := &fakeSource{now: map[string][]metrics.Series{"q": {series(nil, 1)}}}
+	dd := &fakeSource{now: map[string][]metrics.Series{"q": {series(nil, 2)}}}
+	srcs := metrics.Sources{"prometheus": prom, "datadog": dd}
+	ms := []Metric{
+		{Name: "a", Source: "prometheus", Query: "q", Target: &Target{Max: f64(5)}},
+		{Name: "b", Source: "datadog", Query: "q", Target: &Target{Max: f64(5)}},
+	}
+	rs, err := Collect(context.Background(), srcs, ms, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rs[0].Series[0].Now != 1 || rs[1].Series[0].Now != 2 || len(prom.calls) != 1 || len(dd.calls) != 1 {
+		t.Errorf("readings = %+v, prom calls = %d, datadog calls = %d", rs, len(prom.calls), len(dd.calls))
+	}
+	ms[1].Source = "graphite"
+	if _, err := Collect(context.Background(), srcs, ms, at); err == nil || !strings.Contains(err.Error(), `unknown source "graphite"`) {
+		t.Errorf("err = %v, want unknown source", err)
 	}
 }

@@ -36,7 +36,15 @@ type Reading struct {
 	Series []SeriesReading `json:"series"`
 }
 
-func Collect(ctx context.Context, src metrics.Source, ms []Metric, at time.Time) ([]Reading, error) {
+func Collect(ctx context.Context, srcs metrics.Sources, ms []Metric, at time.Time) ([]Reading, error) {
+	use := make([]metrics.Source, len(ms))
+	for i, m := range ms {
+		src, ok := srcs[m.Source]
+		if !ok {
+			return nil, fmt.Errorf("metric %q: unknown source %q", m.Name, m.Source)
+		}
+		use[i] = src
+	}
 	local := at.In(time.Local)
 	now := make([][]metrics.Series, len(ms))
 	days := make([][][]metrics.Series, len(ms))
@@ -44,6 +52,7 @@ func Collect(ctx context.Context, src metrics.Source, ms []Metric, at time.Time)
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(maxConcurrentQueries)
 	for i, m := range ms {
+		src := use[i]
 		g.Go(func() error {
 			ss, err := src.Query(gctx, m.Query, at)
 			if err != nil {

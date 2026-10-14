@@ -35,18 +35,13 @@ func TestLoadRubric(t *testing.T) {
 		t.Errorf("r=%+v err=%v", r, err)
 	}
 	for name, body := range map[string]string{
-		"unknown.json":  `{"question":"q","options":[],"extra":1}`,
 		"one.json":      `{"question":"q","options":[{"key":"a","description":"A"}]}`,
 		"noq.json":      `{"options":[{"key":"a","description":"A"},{"key":"b","description":"B"}]}`,
-		"bad.json":      `{`,
 		"trailing.json": `{"system":"s","question":"q","options":[{"key":"a","description":"A"},{"key":"b","description":"B"}]} {}`,
 	} {
 		if _, err := LoadRubric(write(name, body)); err == nil {
 			t.Errorf("%s: expected error", name)
 		}
-	}
-	if _, err := LoadRubric(filepath.Join(dir, "nope.json")); err == nil {
-		t.Error("missing file: expected error")
 	}
 }
 

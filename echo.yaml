@@ -1,0 +1,21 @@
+sources:
+  - source: prometheus
+    metrics:
+      - name: error_5xx_ratio
+        query: '(sum(rate(istio_requests_total{reporter="source",destination_service_namespace="triage-lab",destination_service_name="echo",response_code=~"5.."}[2m])) or vector(0)) / sum(rate(istio_requests_total{reporter="source",destination_service_namespace="triage-lab",destination_service_name="echo"}[2m]))'
+        target: {max: 0.01}
+      - name: latency_p50_ms
+        query: 'histogram_quantile(0.50, sum by (le) (rate(istio_request_duration_milliseconds_bucket{reporter="source",destination_service_namespace="triage-lab",destination_service_name="echo"}[2m])))'
+        target: {max: 50}
+      - name: latency_p99_ms
+        query: 'histogram_quantile(0.99, sum by (le) (rate(istio_request_duration_milliseconds_bucket{reporter="source",destination_service_namespace="triage-lab",destination_service_name="echo"}[2m])))'
+        target: {max: 500}
+      - name: replica_availability_ratio
+        query: 'max_over_time((sum(kube_deployment_status_replicas_available{namespace="triage-lab",deployment="echo"}) / sum(kube_deployment_spec_replicas{namespace="triage-lab",deployment="echo"}))[3m:30s])'
+        target: {min: 1}
+      - name: container_restarts_15m
+        query: 'sum(increase(kube_pod_container_status_restarts_total{namespace="triage-lab",pod=~"echo-.*"}[15m])) or vector(0)'
+        target: {max: 0}
+      - name: cpu_cores
+        query: 'sum(rate(container_cpu_usage_seconds_total{namespace="triage-lab",container="fortio",pod=~"echo-.*"}[2m]))'
+        target: {max: 0.5}

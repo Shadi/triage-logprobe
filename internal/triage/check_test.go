@@ -25,7 +25,7 @@ func TestCheck(t *testing.T) {
 		before: map[string][]metrics.Series{"q": {series(nil, 0, 0, 0)}},
 	}
 	p := Params{At: at.In(time.FixedZone("x", 3600))}
-	res, err := Check(context.Background(), src, e, r, []Metric{{Name: "error_5xx_ratio", Query: "q"}}, p)
+	res, err := Check(context.Background(), metrics.Sources{"": src}, e, r, []Metric{{Name: "error_5xx_ratio", Query: "q"}}, p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestCheck(t *testing.T) {
 	}
 
 	src.err = errors.New("boom")
-	if _, err := Check(context.Background(), src, e, r, []Metric{{Name: "m", Query: "q"}}, p); err == nil {
+	if _, err := Check(context.Background(), metrics.Sources{"": src}, e, r, []Metric{{Name: "m", Query: "q"}}, p); err == nil {
 		t.Error("metrics error: expected error")
 	}
 }

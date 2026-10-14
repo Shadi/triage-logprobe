@@ -2,7 +2,6 @@ package triage
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 )
@@ -18,25 +17,14 @@ func ParseService(s string) (Service, error) {
 	name, path, ok := strings.Cut(s, "=")
 	name, path = strings.TrimSpace(name), strings.TrimSpace(path)
 	if !ok || path == "" {
-		return Service{}, fmt.Errorf("service %q: want name=path/to/metrics.txt", s)
+		return Service{}, fmt.Errorf("service %q: want name=path/to/metrics.yaml", s)
 	}
 	if !serviceName.MatchString(name) {
 		return Service{}, fmt.Errorf("service name %q: want lowercase letters, digits and dashes", name)
 	}
-	f, err := os.Open(path)
+	ms, err := LoadMetrics(path)
 	if err != nil {
 		return Service{}, fmt.Errorf("service %q: %w", name, err)
-	}
-	defer f.Close()
-	ms, err := ParseMetrics(f)
-	if err != nil {
-		return Service{}, fmt.Errorf("service %q: %s: %w", name, path, err)
-	}
-	if len(ms) == 0 {
-		return Service{}, fmt.Errorf("service %q: %s has no metrics", name, path)
-	}
-	if err := CheckUnique(ms); err != nil {
-		return Service{}, fmt.Errorf("service %q: %s: %w", name, path, err)
 	}
 	return Service{Name: name, Metrics: ms}, nil
 }

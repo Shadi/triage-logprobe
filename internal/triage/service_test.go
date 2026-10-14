@@ -15,7 +15,7 @@ func TestParseService(t *testing.T) {
 		}
 		return p
 	}
-	ok := write("ok.txt", "# c\nrps=sum(rate(x[1m]))\nup=up\n")
+	ok := write("ok.yaml", "sources:\n  - source: prometheus\n    metrics:\n      - {name: rps, query: 'sum(rate(x[1m]))'}\n      - {name: up, query: up}\n")
 	s, err := ParseService("checkout-api=" + ok)
 	if err != nil {
 		t.Fatal(err)
@@ -24,14 +24,11 @@ func TestParseService(t *testing.T) {
 		t.Errorf("service = %+v", s)
 	}
 	for name, arg := range map[string]string{
-		"no path":      "echo",
-		"empty path":   "echo=",
-		"bad name":     "Echo=" + ok,
-		"underscore":   "my_svc=" + ok,
-		"missing file": "echo=" + filepath.Join(dir, "nope.txt"),
-		"empty file":   "echo=" + write("empty.txt", "# only comments\n\n"),
-		"bad metric":   "echo=" + write("bad.txt", "nope\n"),
-		"duplicate":    "echo=" + write("dup.txt", "a=up\na=up\n"),
+		"no path":    "echo",
+		"empty path": "echo=",
+		"bad name":   "Echo=" + ok,
+		"underscore": "my_svc=" + ok,
+		"bad file":   "echo=" + write("bad.yaml", "# only comments\n"),
 	} {
 		if _, err := ParseService(arg); err == nil {
 			t.Errorf("%s: expected error", name)
