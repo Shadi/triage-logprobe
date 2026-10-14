@@ -1,0 +1,122 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: triage-logprobe-services
+  namespace: triage-logprobe
+data:
+  checkout.yaml: |
+    sources:
+      - source: prometheus
+        metrics:
+          - name: error_5xx_ratio
+            query: '(sum(increase(istio_requests_total{destination_service_name="checkout",response_code=~"5.."}[1h])) or vector(0)) / sum(increase(istio_requests_total{destination_service_name="checkout"}[1h]))'
+            target: {max: 0.05}
+          - name: latency_p99_ms
+            query: 'histogram_quantile(0.99, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_service_name="checkout"}[1h])))'
+            target: {max: 1000}
+
+  storefront.yaml: |
+    sources:
+      - source: prometheus
+        metrics:
+          - name: error_5xx_ratio
+            query: '(sum(increase(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/shop/storefront/.*",envoy_response_code_class="5"}[1h])) or vector(0)) / sum(increase(envoy_cluster_upstream_rq_xx{envoy_cluster_name=~"httproute/shop/storefront/.*"}[1h]))'
+            target: {max: 0.05}
+          - name: latency_p99_ms
+            query: 'histogram_quantile(0.99, sum by (le) (rate(envoy_cluster_upstream_rq_time_bucket{envoy_cluster_name=~"httproute/shop/storefront/.*"}[1h])))'
+            target: {max: 2000}
+          - name: replica_availability_ratio
+            query: 'sum(kube_deployment_status_replicas_available{namespace="shop",deployment="storefront"}) / sum(kube_deployment_spec_replicas{namespace="shop",deployment="storefront"})'
+            target: {min: 1}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: triage-logprobe
+  namespace: triage-logprobe
+  labels:
+    app: triage-logprobe
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: triage-logprobe
+  template:
+    metadata:
+      labels:
+        app: triage-logprobe
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: triage-logprobe
+          image: ghcr.io/shadi/triage-logprobe:main
+          args:
+            - serve
+            - -prom
+            - http://prometheus.monitoring.svc:9090
+            - -ollama
+            - http://ollama.ollama.svc:11434
+            - -interval
+            - 60s
+            - -timeout
+            - 20s
+            - -service
+            - checkout=/etc/triage-logprobe/checkout.yaml
+            - -service
+            - storefront=/etc/triage-logprobe/storefront.yaml
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: services
+              mountPath: /etc/triage-logprobe
+              readOnly: true
+      volumes:
+        - name: services
+          configMap:
+            name: triage-logprobe-services
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: triage-logprobe
+  namespace: triage-logprobe
+spec:
+  selector:
+    app: triage-logprobe
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
